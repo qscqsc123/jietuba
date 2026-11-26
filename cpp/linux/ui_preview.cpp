@@ -1918,11 +1918,24 @@ private:
         if (image.isNull()) { QMessageBox::warning(this, QStringLiteral("文字识别失败"), QStringLiteral("无法导出选区底图。")); return; }
         const bool direct=settings_ && settings_->captureFlag(LinuxSettings::CaptureFlag::CopyOcr);
         
-        // 自动选择 OCR 引擎：优先使用 PP-OCR（如果可用）
+        // 根据用户设置选择 OCR 引擎
         std::function<LinuxOcrResult(const QImage &)> recognizer;
-        if (LinuxPpocrEngine::available()) {
-            recognizer = [](const QImage &img) { return LinuxPpocrEngine::recognize(img); };
+        QString engine = settings_ ? settings_->ocrEngine() : "auto";
+        
+        if (engine == "ppocr" || (engine == "auto" && LinuxPpocrEngine::available())) {
+            if (LinuxPpocrEngine::available()) {
+                recognizer = [](const QImage &img) { return LinuxPpocrEngine::recognize(img); };
+            } else if (engine == "ppocr") {
+                // 先关闭截图窗口，避免遮挡错误提示
+                close();
+                QTimer::singleShot(100, [this]() {
+                    QMessageBox::warning(nullptr, QStringLiteral("PP-OCR 不可用"), 
+                        QStringLiteral("PP-OCR 未安装或不可用。\n\n请安装 onnxruntime 和模型文件，或在设置中选择其他引擎。"));
+                });
+                return;
+            }
         }
+        // engine == "tesseract" 或 recognizer 为空时使用 Tesseract（默认）
         
         auto *window = new LinuxOcrResultWindow(image,nullptr,recognizer,direct);
         placeCaptureResult(window,screen(),outputCrop().toAlignedRect(),settings_ ? settings_->ocrPosition() : QStringLiteral("center"));

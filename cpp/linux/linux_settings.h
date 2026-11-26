@@ -42,6 +42,8 @@ public:
     void setSmartSelectionMode(const QString &mode);
     QString ocrPosition() const;
     void setOcrPosition(const QString &position);
+    QString ocrEngine() const;
+    void setOcrEngine(const QString &engine);
     bool crossToolSelection() const;
     void setCrossToolSelection(bool value);
     int shiftLineAngle() const;

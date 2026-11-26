@@ -272,6 +272,14 @@ QString LinuxSettings::ocrPosition() const {
     const auto v=settings_.value("app/ocr_result_position", "center").toString(); return v=="region" || v=="cursor" ? v : QStringLiteral("center");
 }
 void LinuxSettings::setOcrPosition(const QString &v) { if(QStringList{"region","cursor","center"}.contains(v)) settings_.setValue("app/ocr_result_position",v); }
+QString LinuxSettings::ocrEngine() const {
+    const auto v = settings_.value("app/ocr_engine", "auto").toString();
+    return QStringList{"auto", "ppocr", "tesseract"}.contains(v) ? v : QStringLiteral("auto");
+}
+void LinuxSettings::setOcrEngine(const QString &v) { 
+    if(QStringList{"auto", "ppocr", "tesseract"}.contains(v)) 
+        settings_.setValue("app/ocr_engine", v); 
+}
 bool LinuxSettings::crossToolSelection() const { return settings_.value("app/cross_tool_selection", true).toBool(); }
 void LinuxSettings::setCrossToolSelection(bool value) { settings_.setValue("app/cross_tool_selection", value); }
 bool LinuxSettings::textAlwaysOnTop() const { return settings_.value("app/text_always_on_top", true).toBool(); }

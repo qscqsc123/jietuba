@@ -2,6 +2,7 @@
 #include "autostart.h"
 #include "pin_window.h"
 #include "linux_settings.h"
+#include "ppocr_wrapper.h"
 #include "global_shortcut.h"
 #include "shortcut_bindings.h"
 #include "shortcuts_page.h"
@@ -263,8 +264,17 @@ void LinuxSettingsWindow::buildPages() {
     });
     capture->addWidget(magnifierGroup);
     auto *ocrGroup = new jietuba::SettingCardGroup(QStringLiteral("OCR 设置"), capture->parentWidget(), QStringLiteral("capture"));
-    fixedSetting(ocrGroup, jietuba::FluentIcon::Font, settingsText("OCR Engine"),
-                 QStringLiteral("使用系统 Tesseract 和已安装的语言数据。"), QStringLiteral("Tesseract"));
+    
+    // 检测 OCR 引擎可用性
+    bool ppocrAvailable = LinuxPpocrEngine::available();
+    QString ppocrLabel = ppocrAvailable ? "PP-OCR (高精度)" : "PP-OCR (未安装)";
+    QString ppocrDesc = ppocrAvailable ? "使用 PP-OCR 进行高精度文字识别" : "需要安装 onnxruntime 和模型文件";
+    
+    choice(ocrGroup, jietuba::FluentIcon::Font, "OCR 引擎", 
+           ppocrDesc,
+           {{"自动选择", "auto"}, {ppocrLabel, "ppocr"}, {"Tesseract", "tesseract"}},
+           settings_.ocrEngine(), &LinuxSettings::setOcrEngine);
+    
     capture->addWidget(ocrGroup);
     auto *recognition=group("识别结果");
     choice(recognition,I::Layout,"OCR 结果窗口位置","支持定位的桌面按此位置打开结果。",{{"选区旁","region"},{"光标旁","cursor"},{"屏幕中央","center"}},settings_.ocrPosition(),&LinuxSettings::setOcrPosition);

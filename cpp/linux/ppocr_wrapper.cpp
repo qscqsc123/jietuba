@@ -132,8 +132,7 @@ bool LinuxPpocrEngine::runtimeAvailable() {
 bool LinuxPpocrEngine::modelsAvailable() {
     QString root = modelsRoot();
     return QFileInfo::exists(root + "/PP-OCRv6_det_small.onnx") &&
-           QFileInfo::exists(root + "/PP-OCRv6_rec_small.onnx") &&
-           QFileInfo::exists(root + "/ppocr_keys_v1.txt");
+           QFileInfo::exists(root + "/PP-OCRv6_rec_small.onnx");
 }
 
 bool LinuxPpocrEngine::available() {
@@ -170,11 +169,11 @@ static bool initEngine() {
     QString root = modelsRoot();
     QString detModel = root + "/PP-OCRv6_det_small.onnx";
     QString recModel = root + "/PP-OCRv6_rec_small.onnx";
-    QString dict = root + "/ppocr_keys_v1.txt";
     
+    // PP-OCR Rust 库内置字典，不需要外部文件
     global_engine = ppocr_open(detModel.toUtf8().constData(),
                               recModel.toUtf8().constData(),
-                              dict.toUtf8().constData(),
+                              nullptr,  // 字典文件路径（Rust 库内置）
                               error, sizeof(error));
     
     if (!global_engine) {
