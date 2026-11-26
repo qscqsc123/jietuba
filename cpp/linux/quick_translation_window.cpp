@@ -172,6 +172,11 @@ void LinuxQuickTranslationWindow::showAt(QScreen *screen,const QPoint &cursor) {
         setMaximumSize(screen->availableGeometry().size()); fitContent(); winId(); windowHandle()->setScreen(screen); place(); show();
     }
     activateWindow(); input_->setFocus();
+    
+    // 安装全局事件过滤器以监听外部点击
+    if (settings_.closeTranslationOnClickOutside()) {
+        qApp->installEventFilter(this);
+    }
 }
 void LinuxQuickTranslationWindow::fitChoices() {
     for(auto *choice:{provider_,target_}) {choice->ensurePolished(); choice->setFixedWidth(choice->fontMetrics().horizontalAdvance(choice->currentText())+18); choice->setFixedHeight(26);}
@@ -297,6 +302,18 @@ void LinuxQuickTranslationWindow::dragTo(const QPointF &position) {
 }
 void LinuxQuickTranslationWindow::endDrag() {dragging_=false; if(header_) header_->setCursor(Qt::OpenHandCursor);}
 bool LinuxQuickTranslationWindow::eventFilter(QObject *object,QEvent *event) {
+    // 检查全局鼠标点击以实现点击外部关闭
+    if (settings_.closeTranslationOnClickOutside() && event->type() == QEvent::MouseButtonPress) {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        // 检查点击是否在窗口外
+        QWidget *clickedWidget = qobject_cast<QWidget*>(object);
+        if (clickedWidget && !isAncestorOf(clickedWidget) && clickedWidget != this) {
+            // 点击在窗口外，关闭窗口
+            QTimer::singleShot(0, this, &LinuxQuickTranslationWindow::close);
+            return false; // 不拦截事件，让其他控件正常处理
+        }
+    }
+    
     if(object==header_) {
         auto *mouse=dynamic_cast<QMouseEvent *>(event);
         if(mouse && event->type()==QEvent::MouseButtonPress && mouse->button()==Qt::LeftButton) {if(beginDrag(header_->mapTo(this,mouse->position()))) {event->accept(); return true;}}
@@ -313,7 +330,13 @@ bool LinuxQuickTranslationWindow::eventFilter(QObject *object,QEvent *event) {
 void LinuxQuickTranslationWindow::mousePressEvent(QMouseEvent *event) {if(event->button()==Qt::LeftButton && beginDrag(event->position())) event->accept(); else QWidget::mousePressEvent(event);}
 void LinuxQuickTranslationWindow::mouseMoveEvent(QMouseEvent *event) {if(dragging_ && (event->buttons() & Qt::LeftButton)) {dragTo(event->position()); event->accept();} else {endDrag(); QWidget::mouseMoveEvent(event);}}
 void LinuxQuickTranslationWindow::mouseReleaseEvent(QMouseEvent *event) {if(dragging_ && event->button()==Qt::LeftButton) {endDrag(); event->accept();} else QWidget::mouseReleaseEvent(event);}
-void LinuxQuickTranslationWindow::closeEvent(QCloseEvent *event) {endDrag(); if(surface_) surface_->hide(); QWidget::closeEvent(event);}
+void LinuxQuickTranslationWindow::closeEvent(QCloseEvent *event) {
+    endDrag(); 
+    if(surface_) surface_->hide(); 
+    // 移除全局事件过滤器
+    qApp->removeEventFilter(this);
+    QWidget::closeEvent(event);
+}
 void LinuxQuickTranslationWindow::focusOutEvent(QFocusEvent *event) {
     QWidget::focusOutEvent(event);
     if (settings_.closeTranslationOnClickOutside()) {
