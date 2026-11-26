@@ -1,4 +1,5 @@
 #include "capture/portal_frame.h"
+#include "capture/fullscreen_frame.h"
 #include <QTest>
 /**
  * 合成帧验证分数缩放、负屏幕坐标与多屏身份校验，不访问真实桌面。
@@ -7,6 +8,31 @@
 class PortalFrameTest final : public QObject {
     Q_OBJECT
 private slots:
+    void fullscreenNativePixels() {
+        QImage native(2560,1600,QImage::Format_RGB32);native.fill(QColor("#27648a"));
+        native.setPixelColor(2559,1599,Qt::yellow);
+        for(double tag:{1.,1.5,2.}) {
+            native.setDevicePixelRatio(tag);
+            const auto pixels=linuxFullscreenFrame(native,QSize(1707,1067));
+            QCOMPARE(pixels.size(),QSize(2560,1600)); QCOMPARE(pixels.devicePixelRatio(),1.);
+            QCOMPARE(pixels.pixelColor(2559,1599),QColor(Qt::yellow));
+            QCOMPARE(pixels.pixelColor(0,0),QColor("#27648a"));
+        }
+    }
+    void mixedOutputScales() {
+        const QList<QRect> outputs{QRect(-1707,0,1707,1067),QRect(0,0,1920,1080),QRect(1920,-100,1280,800)};
+        const QList<QSize> nativeSizes{QSize(2560,1600),QSize(1920,1080),QSize(2560,1600)};
+        for(int i=0;i<outputs.size();++i) {
+            QImage frame(nativeSizes[i],QImage::Format_RGB32);frame.fill(Qt::blue);
+            QCOMPARE(linuxFullscreenFrame(frame,outputs[i].size()).size(),nativeSizes[i]);
+        }
+        // 一个轴恰好吻合也不能放过旋转/非等比的错误帧。
+        // Reject a mismatched aspect even when one dimension happens to match.
+        QVERIFY(linuxFullscreenFrame(QImage(2560,1067,QImage::Format_RGB32),QSize(1707,1067)).isNull());
+        QVERIFY(linuxFullscreenFrame(QImage(1600,2560,QImage::Format_RGB32),QSize(1707,1067)).isNull());
+        QVERIFY(linuxFullscreenFrame({},QSize(1707,1067)).isNull());
+        QVERIFY(linuxFullscreenFrame(QImage(10,10,QImage::Format_RGB32),{}).isNull());
+    }
     void fractionalCrop() {
         QImage image(200,100,QImage::Format_RGB32);
         for(int y=0;y<100;++y) for(int x=0;x<200;++x) image.setPixelColor(x,y,QColor(x,y,40));

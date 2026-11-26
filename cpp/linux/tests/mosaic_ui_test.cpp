@@ -43,6 +43,7 @@
 #include "ui/toolbar_layout_dialog.h"
 #include <cstdio>
 #include "capture_reentry_case.h"
+#include "capture_fullscreen_case.h"
 /**
  * 私有总线上的文件管理器，验证真实接口与工具栏异步关闭，不启动真实桌面程序。
  * File manager on a private bus verifies the real interface and asynchronous result close without desktop apps.
@@ -65,6 +66,7 @@ int main(int argc, char **argv) {
     // Native siblings paint outside their parent's opacity effect and keep independent input regions.
     QCoreApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
     QApplication app(argc, argv);
+    if(app.arguments().contains("--capture-fullscreen")) return runFullscreenCaptureCase(app);
     if (app.arguments().contains("--capture-reentry"))
         return capture_reentry_test::run(app, app.arguments().contains("--virtual-kwin"));
     {

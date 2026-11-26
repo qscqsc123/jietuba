@@ -3,6 +3,7 @@
 # Run the capture case on a private KWin display, session bus and XDG tree, never the active desktop.
 set -eu
 test_binary=$(realpath "${1:?usage: run_virtual_capture_reentry.sh build/linux-ui/mosaic_ui_test}")
+export JIETUBA_REENTRY_MODE="${2:---capture-reentry}"
 test_root=$(mktemp -d)
 trap 'rm -rf -- "$test_root"' EXIT
 unset DISPLAY WAYLAND_DISPLAY WAYLAND_SOCKET DBUS_SESSION_BUS_ADDRESS XDG_SESSION_ID QT_QPA_PLATFORM SESSION_MANAGER
@@ -25,11 +26,11 @@ cat >"$test_root/client" <<'EOF'
 #!/bin/sh
 # 启动的桌面服务也只连接虚拟输出和私有总线。 / Keep activated desktop helpers on the private display, too.
 dbus-update-activation-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_RUNTIME_DIR
-QT_QPA_PLATFORM=wayland "$JIETUBA_REENTRY_BINARY" --capture-reentry --virtual-kwin
+QT_QPA_PLATFORM=wayland "$JIETUBA_REENTRY_BINARY" "$JIETUBA_REENTRY_MODE" --virtual-kwin
 echo "$?" >"$JIETUBA_REENTRY_RESULT"
 EOF
 chmod 700 "$test_root/client"
-timeout -k 3 45 dbus-run-session -- kwin_wayland --virtual --width 900 --height 600 --socket wayland-jietuba-test \
+timeout -k 3 45 dbus-run-session -- kwin_wayland --virtual --width "${JIETUBA_TEST_WIDTH:-900}" --height "${JIETUBA_TEST_HEIGHT:-600}" --output-count "${JIETUBA_TEST_OUTPUTS:-1}" --socket wayland-jietuba-test \
     --no-lockscreen --no-global-shortcuts --no-kactivities --exit-with-session "$test_root/client"
 test -s "$JIETUBA_REENTRY_RESULT" && exit "$(cat "$JIETUBA_REENTRY_RESULT")"
 exit 1

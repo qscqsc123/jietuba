@@ -31,12 +31,16 @@
 #include "ui/watermark_settings_panel.h"
 #include "ui/watermark_input_dialog.h"
 #include "capture/capture_router.h"
+#include "capture/fullscreen_frame.h"
 #include "global_shortcut.h"
 #include "linux_settings.h"
 #include "capture_delivery.h"
 #include "result_placement.h"
 #include "settings_window.h"
 #include "region_selector.h"
+#include "pointer_locator.h"
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include "pin_window.h"
 #include "pin_toolbar.h"
 #include "annotation_canvas.h"
@@ -957,6 +961,11 @@ public:
             else translateImage();
         });
     }
+    void configureFrozenOutput(QScreen *output) {
+        // 冻结整屏也要记录输出归属，供嵌套截图结束后校验并恢复原文档。
+        // Track the frozen document's output without enabling live region recapture.
+        regionOutput_=output; regionGeometry_=output->geometry();
+    }
     void configureRegionCapture(QScreen *output, const QRect &logicalRegion, const QImage &image) {
         regionOutput_ = output;
         regionGeometry_ = output->geometry();
@@ -1106,7 +1115,7 @@ public:
             scene_->selection_model->stop_dragging();
             if (scene_->selection_model->is_empty()) setInitialRegion(regionFrame_);
             else if (scene_->selection_model->is_active()) scene_->confirm_selection();
-            refreshAfterChild_ = true;
+            refreshAfterChild_ = view_->regionCapture;
             positionToolbar();
         }
         if (auto *grab = QWidget::mouseGrabber(); grab && grab->window() == this) grab->releaseMouse();
@@ -2147,16 +2156,16 @@ public:
             // 先截图再框选模式：截取全屏用于框选
             // Capture-first mode: capture fullscreen for selection
             if (logicalSelection_.isEmpty() && selectors_.isEmpty()) {
-                // 验证全屏截图尺寸
-                // Validate fullscreen capture size
-                const double scale = image.devicePixelRatio();
-                const QSize logicalSize = screen.geometry.size();
-                if (image.isNull() || std::abs(image.width() - logicalSize.width() * scale) > 2.0
-                    || std::abs(image.height() - logicalSize.height() * scale) > 2.0) {
-                    fail(QStringLiteral("显示器 %1 返回的截图尺寸不匹配。").arg(screen.name)); 
+                // 按本显示器的实际像素校验，不能要求整屏后端必须提供正确的 DPR 标签。
+                // Validate this output's actual pixels; fullscreen backends may leave DPR at 1.
+                const auto pixels=linuxFullscreenFrame(image,screen.geometry.size());
+                if(pixels.isNull()) {
+                    fail(QStringLiteral("显示器 %1 的截图宽高比例不匹配（逻辑尺寸 %2×%3，实际像素 %4×%5）。")
+                        .arg(screen.name).arg(screen.geometry.width()).arg(screen.geometry.height())
+                        .arg(image.width()).arg(image.height()));
                     return;
                 }
-                images_.append(image);
+                images_.append(pixels);
                 ++index_;
                 captureForSelection();
                 return;
@@ -2280,24 +2289,42 @@ public:
             if (dragScreen) { captureCurrentOutput(dragScreen); return; }
         }
         screens_.clear(); images_.clear(); index_ = 0;
-        const auto selectedScreens = settings_.captureAllScreens() ? QGuiApplication::screens() : QList<QScreen *>{QGuiApplication::primaryScreen()};
-        for (auto *screen : selectedScreens) {
-            if (!screen || screen->geometry().isEmpty()) continue;
-            screens_.append({screen, screen->name(), screen->geometry()});
-        }
-        if (screens_.isEmpty()) { fail(QStringLiteral("没有可用的显示器。")); return; }
         captureAction_ = action;
         logicalSelection_ = {};
         busy_ = true;
         syncRecordingWindows();
-        // 先截图冻结画面，再在冻结的画面上框选
-        // Capture first to freeze the frame, then select on the frozen image
         const auto generation = ++generation_;
-        QTimer::singleShot(60, this, [this, generation] {
-            if (busy_ && generation == generation_) captureForSelection();
-        });
+        if(settings_.captureAllScreens()) { beginOutputCapture(nullptr,generation); return; }
+        const auto locate=[this,generation] {
+            if(!busy_ || generation!=generation_) return;
+            auto *locator=new LinuxPointerLocator(this);
+            locator->locate([this,generation](QScreen *screen,const QPoint &){beginOutputCapture(screen,generation);});
+        };
+        // KDE 直接给出活动输出名称。其它桌面从实际 pointer-enter 定位，不能依赖后台旧光标缓存。
+        // Prefer KWin's active output, falling back to the compositor-driven pointer locator;
+        // background Wayland clients cannot treat QCursor's cached position as a global query.
+        if(QGuiApplication::platformName().startsWith("wayland") && QString::fromLocal8Bit(qgetenv("XDG_CURRENT_DESKTOP")).contains("KDE",Qt::CaseInsensitive)) {
+            const auto request=QDBusMessage::createMethodCall("org.kde.KWin","/KWin","org.kde.KWin","activeOutputName");
+            auto *watcher=new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(request,300),this);
+            connect(watcher,&QDBusPendingCallWatcher::finished,this,[this,watcher,generation,locate]{
+                QDBusPendingReply<QString> reply=*watcher; watcher->deleteLater();
+                if(!busy_ || generation!=generation_) return;
+                if(!reply.isError()) for(auto *screen:QGuiApplication::screens()) if(screen->name()==reply.value()) {beginOutputCapture(screen,generation);return;}
+                locate();
+            });
+        } else locate();
     }
 private:
+    void beginOutputCapture(QScreen *focusedOutput,quint64 generation) {
+        if(!busy_ || generation!=generation_) return;
+        if(!focusedOutput) focusedOutput=QGuiApplication::primaryScreen();
+        const auto selectedScreens=settings_.captureAllScreens() ? QGuiApplication::screens() : QList<QScreen *>{focusedOutput};
+        for(auto *screen:selectedScreens) if(screen && !screen->geometry().isEmpty()) screens_.append({screen,screen->name(),screen->geometry()});
+        if(screens_.isEmpty()) {fail(QStringLiteral("没有可用的显示器。"));return;}
+        // 获取每个输出的原生像素后，再在各自逻辑尺寸上显示冻结选区。
+        // Capture native frames for each output before displaying logical-coordinate selectors.
+        QTimer::singleShot(60,this,[this,generation]{if(busy_ && generation==generation_) captureForSelection();});
+    }
     void captureCurrentOutput(QScreen *screen) {
         if (!screen) { fail(QStringLiteral("当前显示器已断开。")); return; }
         captureAction_ = "capture"; busy_ = true; index_ = 0; images_.clear();
@@ -2430,30 +2457,9 @@ private:
         beginSelectionOnCaptured();
     }
     void beginSelectionOnCaptured() {
-        // 在冻结的截图上显示编辑窗口让用户框选
-        // Show edit window on frozen capture for user selection
-        for (int i = 0; i < screens_.size(); ++i) {
-            const auto &output = screens_[i];
-            if (!output.screen || output.screen->geometry() != output.geometry) { cancelSelection(); return; }
-            
-            auto *overlay = new CapturePreview(images_[i], &settings_);
-            overlay->setScreen(output.screen);
-            overlays_.append(overlay);
-            
-            // 用户完成选区后的回调
-            // Callback when user completes selection
-            overlay->setOverlayMode([this, overlay, i] { 
-                finishEditorFromSelection(overlay, i);
-            });
-            
-            overlay->showFullScreen();
-        }
-        syncEditorLevels();
-    }
-    void finishEditorFromSelection(CapturePreview *overlay, int screenIndex) {
-        // 编辑器已经有选区和编辑功能，直接使用
-        // Editor already has selection and editing, just use it
-        finishEditor(overlay);
+        // 所有像素已到齐，进入与区域截图相同的编辑状态，不能继续保留“正在采集”标志。
+        // Frozen and live captures share the same editor lifecycle and completion handlers.
+        openEditors(true);
     }
     void beginSelection() {
         for (const auto &output : screens_) {
@@ -2524,6 +2530,14 @@ private:
             restoreEditor();
             return;
         }
+        openEditors(false);
+    }
+    void openEditors(bool frozen) {
+        for(const auto &output:screens_) {
+            if(!output.screen || output.screen->geometry()!=output.geometry) {fail(QStringLiteral("截图期间显示器配置发生变化，请重试。"));return;}
+        }
+        // busy_ 只表示等待屏幕像素；框选期间由 overlays_ 表示会话存在，完成后才能再次启动。
+        // Acquisition ends here. Active editors, not busy_, govern selection and nested capture.
         busy_ = false;
         for (int i = 0; i < screens_.size(); ++i) {
             auto *overlay = new CapturePreview(images_[i], &settings_);
@@ -2579,7 +2593,8 @@ private:
             overlay->setGifCaptureHandler([this](QScreen *screen, const QSize &pixels, const QRect &region,const QRect &logicalRegion) {
                 prepareRecording(screen, pixels, region, logicalRegion);
             });
-            overlay->configureRegionCapture(screens_[i].screen,logicalSelection_.toRect(),images_[i]);
+            if(frozen) overlay->configureFrozenOutput(screens_[i].screen);
+            else overlay->configureRegionCapture(screens_[i].screen,logicalSelection_.toRect(),images_[i]);
             overlay->prepareOverlayOnScreen(screens_[i].screen);
             visualEditors_.append(overlay);
             overlays_.append(overlay);
