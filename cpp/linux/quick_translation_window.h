@@ -34,6 +34,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent *) override;
     void closeEvent(QCloseEvent *) override;
     void resizeEvent(QResizeEvent *) override;
+    void focusOutEvent(QFocusEvent *) override;
 private:
     void translate();
     void speak();

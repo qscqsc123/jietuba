@@ -314,6 +314,12 @@ void LinuxQuickTranslationWindow::mousePressEvent(QMouseEvent *event) {if(event-
 void LinuxQuickTranslationWindow::mouseMoveEvent(QMouseEvent *event) {if(dragging_ && (event->buttons() & Qt::LeftButton)) {dragTo(event->position()); event->accept();} else {endDrag(); QWidget::mouseMoveEvent(event);}}
 void LinuxQuickTranslationWindow::mouseReleaseEvent(QMouseEvent *event) {if(dragging_ && event->button()==Qt::LeftButton) {endDrag(); event->accept();} else QWidget::mouseReleaseEvent(event);}
 void LinuxQuickTranslationWindow::closeEvent(QCloseEvent *event) {endDrag(); if(surface_) surface_->hide(); QWidget::closeEvent(event);}
+void LinuxQuickTranslationWindow::focusOutEvent(QFocusEvent *event) {
+    QWidget::focusOutEvent(event);
+    if (settings_.closeTranslationOnClickOutside()) {
+        close();
+    }
+}
 void LinuxQuickTranslationWindow::resizeEvent(QResizeEvent *event) {QWidget::resizeEvent(event); refreshStatus();}
 void LinuxQuickTranslationWindow::paintEvent(QPaintEvent *) {
     QPainter painter(this); painter.setRenderHint(QPainter::Antialiasing);
