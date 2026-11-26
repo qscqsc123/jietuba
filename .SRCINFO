@@ -1,0 +1,39 @@
+pkgbase = jietuba-linux-git
+	pkgdesc = Screenshot, annotation, OCR, pin, and recording tool (Linux port)
+	pkgver = r592.6676a8a
+	pkgrel = 1
+	url = https://github.com/qscqsc123/jietuba
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	makedepends = git
+	makedepends = cmake>=3.24
+	makedepends = cargo
+	makedepends = wayland-protocols
+	makedepends = qt6-tools
+	depends = qt6-base>=6.8
+	depends = qt6-svg
+	depends = qt6-multimedia
+	depends = gstreamer
+	depends = gst-plugins-base
+	depends = gst-plugins-good
+	depends = gst-plugin-pipewire
+	depends = wayland
+	depends = libx11
+	depends = libxfixes
+	depends = libxrandr
+	depends = tesseract
+	depends = tesseract-data-eng
+	depends = tesseract-data-chi_sim
+	depends = zxing-cpp
+	optdepends = onnxruntime: High-accuracy OCR with PP-OCR (strongly recommended)
+	optdepends = layer-shell-qt: Wayland layer-shell support for pins
+	optdepends = qt6-speech: Text-to-speech support
+	optdepends = speech-dispatcher: Alternative TTS backend
+	optdepends = at-spi2-core: Smart element detection
+	provides = jietuba-linux
+	conflicts = jietuba-linux
+	source = jietuba::git+https://github.com/qscqsc123/jietuba.git#branch=dev
+	sha256sums = SKIP
+
+pkgname = jietuba-linux-git

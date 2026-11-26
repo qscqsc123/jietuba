@@ -1,12 +1,6 @@
-git add .
-git commit -m "feat: 添加 X11 截图支持和 PP-OCR 高精度识别
-
-- 新增 X11 截图后端，支持 XFCE/MATE 等 Xorg 桌面
-- 移植 PP-OCR，中文识别精度提升到 95%+
-- 整理项目目录结构，删除临时文件
-- 添加依赖说明和测试文档"# Maintainer: qscqsc123 <wy56752466@gmail.com>
+# Maintainer: qscqsc123 <wy56752466@gmail.com>
 pkgname=jietuba-linux-git
-pkgver=r1.0.0
+pkgver=r592.6676a8a
 pkgrel=1
 pkgdesc="Screenshot, annotation, OCR, pin, and recording tool (Linux port)"
 arch=('x86_64' 'aarch64')
@@ -37,78 +31,56 @@ makedepends=(
     'qt6-tools'
 )
 optdepends=(
+    'onnxruntime: High-accuracy OCR with PP-OCR (strongly recommended)'
     'layer-shell-qt: Wayland layer-shell support for pins'
     'qt6-speech: Text-to-speech support'
     'speech-dispatcher: Alternative TTS backend'
-    'onnxruntime: High-accuracy OCR with PP-OCR (recommended)'
     'at-spi2-core: Smart element detection'
 )
 provides=('jietuba-linux')
 conflicts=('jietuba-linux')
-source=("git+${url}.git")
+source=("jietuba::git+${url}.git#branch=dev")
 sha256sums=('SKIP')
 
 pkgver() {
-    cd "$srcdir/${pkgname%-git}"
+    cd "$srcdir/jietuba"
     printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 prepare() {
-    cd "$srcdir/${pkgname%-git}"
-    # 准备 Cargo 依赖（离线构建）
-    cd rust_libs
+    cd "$srcdir/jietuba/rust_libs"
     cargo fetch --locked
+    
+    # 生成 native_smart_erase 的 Cargo.lock（git 中被忽略）
+    cd "$srcdir/jietuba/cpp/linux/native_smart_erase"
+    cargo generate-lockfile
 }
 
 build() {
-    cd "$srcdir/${pkgname%-git}/cpp"
+    cd "$srcdir/jietuba/cpp"
     
     cmake -B build \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr \
-        -DJIETUBA_LINUX_CAPTURE_TESTS=OFF
+        -DCMAKE_INSTALL_PREFIX=/usr
     
-    cmake --build build --parallel
-}
-
-check() {
-    cd "$srcdir/${pkgname%-git}/cpp/build"
-    # 运行测试（需要虚拟显示器）
-    # ctest --output-on-failure || true
+    cmake --build build --parallel --target jietuba_linux_ui_preview
 }
 
 package() {
-    cd "$srcdir/${pkgname%-git}/cpp"
+    cd "$srcdir/jietuba/cpp"
     
-    # 安装主程序
-    install -Dm755 "build/jietuba-linux" "$pkgdir/usr/bin/jietuba-linux"
+    install -Dm755 "build/jietuba_linux_ui_preview" "$pkgdir/usr/bin/jietuba-linux"
     
-    # 安装可选辅助工具
     if [ -f "build/jietuba-smart-element" ]; then
         install -Dm755 "build/jietuba-smart-element" "$pkgdir/usr/bin/jietuba-smart-element"
     fi
     
-    # 安装桌面文件
-    install -Dm644 "build/linux-ui/io.github.jietuba.LinuxPreview.desktop" \
-        "$pkgdir/usr/share/applications/jietuba-linux.desktop"
-    
-    # 安装图标
-    for size in 16 32 48 64 128 256; do
-        install -Dm644 "../svg/托盘.svg" \
-            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/jietuba-linux.svg"
-    done
-    
-    # 安装 OCR 模型（如果存在）
     if [ -d "../models" ]; then
         install -dm755 "$pkgdir/usr/share/jietuba/models"
         install -Dm644 ../models/*.onnx "$pkgdir/usr/share/jietuba/models/" 2>/dev/null || true
         install -Dm644 ../models/*.txt "$pkgdir/usr/share/jietuba/models/" 2>/dev/null || true
     fi
     
-    # 安装许可证
     install -Dm644 "../LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-    
-    # 安装文档
     install -Dm644 "../README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
-    install -Dm644 "../LINUX_PORT_ANALYSIS.md" "$pkgdir/usr/share/doc/$pkgname/LINUX_PORT_ANALYSIS.md"
 }
