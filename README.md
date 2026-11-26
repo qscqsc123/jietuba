@@ -61,7 +61,7 @@ makepkg -si
 
 ### 1. 克隆仓库
 ```bash
-git clone https://github.com/你的用户名/jietuba-linux.git
+git clone https://github.com/qscqsc123/jietuba-linux.git
 cd jietuba-linux
 ```
 
