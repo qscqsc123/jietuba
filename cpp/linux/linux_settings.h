@@ -54,8 +54,6 @@ public:
     void setHighlightCursorOnStart(bool value);
     
     // 翻译设置
-    bool closeTranslationOnClickOutside() const;
-    void setCloseTranslationOnClickOutside(bool value);
     bool ignoreLineBreaksInTranslation() const;
     void setIgnoreLineBreaksInTranslation(bool value);
     bool keepOriginalFormat() const;

@@ -507,14 +507,6 @@ void LinuxSettingsWindow::buildPages() {
     translation->addWidget(translationGroup);
     
     auto *translationOptions = new jietuba::SettingCardGroup(QStringLiteral("翻译选项"), translation->parentWidget());
-    auto *closeOnClickOut = new jietuba::SwitchSettingCard(jietuba::FluentIcon::Hide, "点击外部时关闭",
-                                                           "快捷键弹出的翻译窗失去焦点时自动关闭。", translationOptions);
-    closeOnClickOut->setChecked(settings_.closeTranslationOnClickOutside());
-    translationOptions->addSettingCard(closeOnClickOut);
-    connect(closeOnClickOut, &jietuba::SwitchSettingCard::checkedChanged, this, [this](bool on) {
-        settings_.setCloseTranslationOnClickOutside(on); persist();
-    });
-    
     auto *ignoreBreaks = new jietuba::SwitchSettingCard(jietuba::FluentIcon::Alignment, "忽略换行",
                                                         "把 OCR 的多行文字合并后翻译。", translationOptions);
     ignoreBreaks->setChecked(settings_.ignoreLineBreaksInTranslation());

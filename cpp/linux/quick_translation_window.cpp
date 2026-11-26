@@ -172,11 +172,6 @@ void LinuxQuickTranslationWindow::showAt(QScreen *screen,const QPoint &cursor) {
         setMaximumSize(screen->availableGeometry().size()); fitContent(); winId(); windowHandle()->setScreen(screen); place(); show();
     }
     activateWindow(); input_->setFocus();
-    
-    // 安装全局事件过滤器以监听外部点击
-    if (settings_.closeTranslationOnClickOutside()) {
-        qApp->installEventFilter(this);
-    }
 }
 void LinuxQuickTranslationWindow::fitChoices() {
     for(auto *choice:{provider_,target_}) {choice->ensurePolished(); choice->setFixedWidth(choice->fontMetrics().horizontalAdvance(choice->currentText())+18); choice->setFixedHeight(26);}
@@ -302,29 +297,6 @@ void LinuxQuickTranslationWindow::dragTo(const QPointF &position) {
 }
 void LinuxQuickTranslationWindow::endDrag() {dragging_=false; if(header_) header_->setCursor(Qt::OpenHandCursor);}
 bool LinuxQuickTranslationWindow::eventFilter(QObject *object,QEvent *event) {
-    // 检查全局鼠标点击以实现点击外部关闭
-    if (settings_.closeTranslationOnClickOutside() && event->type() == QEvent::MouseButtonPress) {
-        auto *mouseEvent = static_cast<QMouseEvent *>(event);
-        // 获取鼠标全局位置
-        QPoint globalPos = mouseEvent->globalPosition().toPoint();
-        
-        // 检查点击是否在窗口几何区域外
-        QRect windowGeometry = geometry();
-        if (surface_) {
-            // Layer shell 模式：使用 surface 的位置
-            windowGeometry.moveTopLeft(surface_->geometry().topLeft() + pos());
-        } else {
-            // 普通模式：使用窗口全局位置
-            windowGeometry.moveTopLeft(mapToGlobal(QPoint(0, 0)));
-        }
-        
-        if (!windowGeometry.contains(globalPos)) {
-            // 点击在窗口外，关闭窗口
-            QTimer::singleShot(0, this, &LinuxQuickTranslationWindow::close);
-            return false;
-        }
-    }
-    
     if(object==header_) {
         auto *mouse=dynamic_cast<QMouseEvent *>(event);
         if(mouse && event->type()==QEvent::MouseButtonPress && mouse->button()==Qt::LeftButton) {if(beginDrag(header_->mapTo(this,mouse->position()))) {event->accept(); return true;}}
@@ -344,15 +316,7 @@ void LinuxQuickTranslationWindow::mouseReleaseEvent(QMouseEvent *event) {if(drag
 void LinuxQuickTranslationWindow::closeEvent(QCloseEvent *event) {
     endDrag(); 
     if(surface_) surface_->hide(); 
-    // 移除全局事件过滤器
-    qApp->removeEventFilter(this);
     QWidget::closeEvent(event);
-}
-void LinuxQuickTranslationWindow::focusOutEvent(QFocusEvent *event) {
-    QWidget::focusOutEvent(event);
-    if (settings_.closeTranslationOnClickOutside()) {
-        close();
-    }
 }
 void LinuxQuickTranslationWindow::resizeEvent(QResizeEvent *event) {QWidget::resizeEvent(event); refreshStatus();}
 void LinuxQuickTranslationWindow::paintEvent(QPaintEvent *) {

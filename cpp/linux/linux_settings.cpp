@@ -302,12 +302,6 @@ void LinuxSettings::setHighlightCursorOnStart(bool value) {
 }
 
 // 翻译设置
-bool LinuxSettings::closeTranslationOnClickOutside() const { 
-    return settings_.value("translation/close_on_click_outside", true).toBool(); 
-}
-void LinuxSettings::setCloseTranslationOnClickOutside(bool value) { 
-    settings_.setValue("translation/close_on_click_outside", value); 
-}
 bool LinuxSettings::ignoreLineBreaksInTranslation() const { 
     return settings_.value("translation/ignore_line_breaks", false).toBool(); 
 }
