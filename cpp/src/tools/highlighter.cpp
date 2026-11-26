@@ -10,7 +10,11 @@
 namespace jietuba {
 QString HighlighterTool::load_draw_mode(ToolContext &ctx) const {
     if (ctx.settings_manager) return ctx.settings_manager->get_tool_settings("highlighter")->get("draw_mode", MODE_FREEHAND).toString();
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    return linux_mode;
+#else
     return MODE_FREEHAND;
+#endif
 }
 
 void HighlighterTool::start_rect_draw(const QPointF &pos, ToolContext &ctx) {
@@ -49,7 +53,7 @@ bool HighlighterTool::on_press(const QPointF &pos, Qt::MouseButton button, ToolC
     return true;
 }
 
-void HighlighterTool::on_move(const QPointF &pos, ToolContext &) {
+void HighlighterTool::on_move(const QPointF &pos, ToolContext &ctx) {
     if (draw_mode == MODE_RECT) {
         if (drawing && rect_item && start_pos) {
             rect_end = pos;
@@ -58,7 +62,13 @@ void HighlighterTool::on_move(const QPointF &pos, ToolContext &) {
         return;
     }
     if (!(drawing && current_item && stroke)) return;
-    if (stroke->extend(pos, shift_held())) current_item->extend_path(stroke->path, stroke->take_dirty_from());
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    const bool straight = ctx.shiftHeld;
+#else
+    Q_UNUSED(ctx);
+    const bool straight = shift_held();
+#endif
+    if (stroke->extend(pos, straight)) current_item->extend_path(stroke->path, stroke->take_dirty_from());
 }
 
 void HighlighterTool::on_release(const QPointF &pos, ToolContext &ctx) {

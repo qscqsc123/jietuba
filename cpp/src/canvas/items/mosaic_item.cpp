@@ -72,6 +72,14 @@ void MosaicItem::set_kind(MosaicKind kind) {
     update();
 }
 
+void MosaicItem::set_brush_width(qreal width) {
+    width = std::max(1.0, width);
+    if (qFuzzyCompare(brush_width_, width)) return;
+    brush_width_ = width;
+    const QPainterPath saved = path_;
+    set_path(saved);
+}
+
 void MosaicItem::adopt_smart_erase(MosaicItem &source, const QPointF &offset) {
     // A stroke still being drawn has nothing to share; the copy rebuilds from its own scene.
     if (!fill_ || !source.fill_ || source.drawing_) return;
@@ -80,6 +88,13 @@ void MosaicItem::adopt_smart_erase(MosaicItem &source, const QPointF &offset) {
 }
 
 bool MosaicItem::smart_erase_in_progress() { return fill_ && !drawing_ && !fill_->ready() && fill_->start_now(); }
+
+bool MosaicItem::ensure_smart_erase_result() {
+    if (kind_ != MosaicKind::SmartErase) return true;
+    if (!fill_ || drawing_) return false;
+    if (!fill_->ready()) fill_->compute_now();
+    return fill_->ready() && fill_->patch().has_value();
+}
 
 void MosaicItem::edit_finished() {
     if (fill_ && !drawing_ && !fill_->ready()) fill_->start_now();

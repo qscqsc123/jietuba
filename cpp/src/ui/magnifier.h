@@ -7,14 +7,23 @@
 #include <QPen>
 #include <QWidget>
 #include <optional>
+#include <functional>
+
+class QGraphicsView;
 
 namespace jietuba {
 class CanvasScene;
 class CanvasView;
 class ToolSettingsManager;
 
-// Pointer magnifier with RGB/HSV info: a fixed-size overlay moved with the cursor,
-// repainting only itself instead of the whole capture window.
+/**
+ * 跟随取色点的原版放大镜：直接采样截图原始像素，局部缓存放大图，并显示坐标与颜色。
+ * Linux 通过 Options 和交互回调接入同一套绘制；它是截图表面的透明输入子控件，
+ * 不申请额外的 Wayland 窗口，也不会把放大镜或遮罩本身的颜色当成取色结果。
+ * Source-pixel magnifier with a local image cache, coordinates and color formats.
+ * Linux supplies Options/interaction callbacks to this shared renderer. It stays a
+ * mouse-transparent capture child, never samples its own overlay and repaints locally.
+ */
 class MagnifierOverlay : public QWidget {
     Q_OBJECT
 public:
@@ -33,7 +42,26 @@ public:
     // No grid below this cell size in screen pixels: the lines would cover the pixels.
     static constexpr int GRID_MIN_CELL = 5;
 
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    /**
+     * Linux 注入的显示配置：复用原版像素采样和绘制，不依赖 Windows 设置或原生剪贴板。
+     * 坐标始终是截图原始像素，Qt 视图变换只参与面板定位，不参与取色。
+     * Linux display options reuse the original renderer without Windows services.
+     * Sampling stays in source pixels; view transforms affect placement only.
+     */
+    struct Options {
+        bool enabled = true, grid = false, selection = false, hints = true;
+        double zoom = 4;
+        QString copyKey = QStringLiteral("C");
+        QVector<color_formats::ColorFormat> formats = color_formats::default_formats();
+    };
+    MagnifierOverlay(QWidget *parent, CanvasScene *scene, QGraphicsView *view, const Options &options);
+    void configure(const Options &options);
+    std::function<bool()> interaction_blocked;
+    std::function<void(double)> zoom_changed;
+#else
     MagnifierOverlay(QWidget *parent, CanvasScene *scene, CanvasView *view, ToolSettingsManager *config_manager = nullptr);
+#endif
     // Image area plus info lines: coordinates, the current colour format, then hints.
     int combined_height() const;
     void apply_scale();
@@ -56,7 +84,11 @@ public:
     bool should_render() const;
 
     CanvasScene *scene = nullptr;
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    QGraphicsView *view = nullptr;
+#else
     CanvasView *view = nullptr;
+#endif
     ToolSettingsManager *config_manager = nullptr;
     std::optional<QPointF> cursor_scene_pos;
 
@@ -119,5 +151,8 @@ private:
     bool enabled_ = true, show_grid_ = false, show_hint_ = true, show_selection_ = false;
     QVector<color_formats::ColorFormat> formats_;
     int format_index_ = 0;
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    QString copy_key_ = QStringLiteral("C");
+#endif
 };
 }

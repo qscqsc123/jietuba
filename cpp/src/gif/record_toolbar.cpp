@@ -5,6 +5,7 @@
 #include "core/ui_scale.h"
 #include "core/ui_theme.h"
 #include "gif/_widgets.h"
+#include "gif/video_settings_panel.h"
 #include "settings/tool_settings.h"
 #include "tools/controller.h"
 #include "ui/arrow_settings_panel.h"
@@ -41,19 +42,9 @@ QString seconds_text(int seconds) {
 }
 
 // Drawing tool buttons: (tool_id, svg_file, tooltip).
-struct DrawTool {
-    const char *id;
-    const char *svg;
-    const char *tip;
-};
-const DrawTool DRAW_TOOLS[] = {
-    {"pen", "画笔.svg", "画笔"},
-    {"rect", "方框.svg", "矩形"},
-    {"ellipse", "圆框.svg", "椭圆"},
-    {"arrow", "箭头.svg", "箭头"},
-    {"text", "文字.svg", "文字"},
-    {"eraser", "橡皮.svg", "橡皮擦"},
-};
+// 工具顺序与 Linux 共用，避免两个录制条分别维护图标列表。
+// Share tool order and SVG names with the Linux recording row.
+constexpr auto &DRAW_TOOLS = RECORDING_DRAW_TOOLS;
 
 template <class Panel>
 void prepare_panel(Panel *panel) {
@@ -90,11 +81,7 @@ RecordToolbar::~RecordToolbar() {
 // ── UI ──
 
 QString RecordToolbar::time_label_qss() const {
-    return QString("QPushButton { color: #596579; font-size: %1px; border: none; min-width: %2px; padding: %3px; }"
-                   "QPushButton:hover { background: rgba(15,23,42,0.07); }")
-        .arg(scaled(12))
-        .arg(scaled(52))
-        .arg(scaled(4));
+    return recording_time_style();
 }
 
 void RecordToolbar::paintEvent(QPaintEvent *) { paint_rounded_panel(this); }
@@ -135,8 +122,8 @@ void RecordToolbar::apply_scale_sizes() {
     container_->setStyleSheet(toolbar_style());
     result_container_->setStyleSheet(toolbar_style());
     const int inset = python_floordiv(scaled(BASE_HEIGHT) - scaled(BASE_BTN_H), 2);
-    row_layout_->setContentsMargins(scaled(8), inset, scaled(8), inset);
-    row_layout_->setSpacing(scaled(6));
+    row_layout_->setContentsMargins(scaled(RecordToolbarMetrics::MARGIN), inset, scaled(RecordToolbarMetrics::MARGIN), inset);
+    row_layout_->setSpacing(scaled(RecordToolbarMetrics::SPACING));
 
     const int btn_w = scaled(BASE_BTN_W), btn_h = scaled(BASE_BTN_H);
     const int icon_sz = scaled(BASE_ICON);
@@ -734,58 +721,17 @@ void RecordToolbar::show_video_settings() {
     auto *dialog = new QDialog(this);
     video_dialog_ = dialog;
     dialog->setWindowTitle(tr_text("视频设置"));
-    auto *form = new QFormLayout(dialog);
-    auto *fps = new QSpinBox(dialog);
-    fps->setRange(1, 60);
-    fps->setValue(video_options_.fps);
-    fps->setSuffix(" fps");
-    form->addRow(tr_text("帧率"), fps);
-    auto *bitrate = new QDoubleSpinBox(dialog);
-    bitrate->setRange(0.5, 50);
-    bitrate->setSingleStep(0.5);
-    bitrate->setDecimals(1);
-    bitrate->setValue(video_options_.bitrate / 1000000.0);
-    bitrate->setSuffix(" Mbps");
-    auto *presets = new QComboBox(dialog);
-    for (int value : {1, 2, 4, 8}) presets->addItem(QString("%1 Mbps").arg(value), static_cast<double>(value));
-    presets->addItem(tr_text("自定义"), QVariant());
-    const int index = presets->findData(video_options_.bitrate / 1000000.0);
-    presets->setCurrentIndex(index >= 0 ? index : 4);
-    connect(presets, &QComboBox::currentIndexChanged, dialog, [presets, bitrate](int i) {
-        const auto data = presets->itemData(i);
-        if (data.isValid()) bitrate->setValue(data.toDouble());
-    });
-    connect(bitrate, &QDoubleSpinBox::valueChanged, dialog, [presets](double value) {
-        const int found = presets->findData(value);
-        presets->setCurrentIndex(found >= 0 ? found : 4);
-    });
-    auto *row = new QHBoxLayout;
-    row->addWidget(presets);
-    row->addWidget(bitrate);
-    form->addRow(tr_text("视频码率"), row);
-    auto *audio = new QCheckBox(tr_text("录制系统声音"), dialog);
-    audio->setChecked(video_options_.system_audio);
-    auto *hardware = new QCheckBox(tr_text("优先使用硬件编码（不可用时使用系统软件编码）"), dialog);
-    hardware->setChecked(video_options_.hardware);
-    auto *cursor = new QCheckBox(tr_text("录制鼠标指针"), dialog);
-    cursor->setChecked(video_options_.cursor);
-    for (auto *widget : {audio, hardware, cursor}) form->addRow(widget);
-    auto *hint = new QLabel(tr_text("码率是目标值，实际大小随画面变化。较低码率减少文件大小和细节。系统声音不包含麦克风。"), dialog);
-    hint->setWordWrap(true);
-    form->addRow(hint);
+    // Windows/Linux 共用表单，平台层只负责保存设置和显示对话框。
+    // Share the settings form with Linux; platform code owns persistence and presentation.
+    auto *layout = new QVBoxLayout(dialog);
+    auto *panel = new VideoSettingsPanel(video_options_, dialog);
+    layout->addWidget(panel);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, dialog);
     connect(buttons, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
-    form->addRow(buttons);
-    connect(dialog, &QDialog::accepted, this, [this, fps, bitrate, audio, hardware, cursor] {
-        RecordingOptions options;
-        options.fps = fps->value();
-        options.bitrate = static_cast<int>(python_round(bitrate->value() * 1000000));
-        options.system_audio = audio->isChecked();
-        options.hardware = hardware->isChecked();
-        options.cursor = cursor->isChecked();
-        options.validate();
-        video_options_ = options;
+    layout->addWidget(buttons);
+    connect(dialog, &QDialog::accepted, this, [this, panel] {
+        video_options_ = panel->options();
         video_options_.save_to_config(config_);
         refresh_recording_options();
         emit fps_changed(video_options_.fps);

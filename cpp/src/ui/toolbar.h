@@ -9,6 +9,7 @@
 #include <QPushButton>
 #include <QTimer>
 #include <QWidget>
+#include <functional>
 #include <optional>
 
 class QGraphicsScene;
@@ -23,6 +24,7 @@ class PaintSettingsPanel;
 class ShapeSettingsPanel;
 class TextSettingsPanel;
 class WatermarkSettingsPanel;
+class ToolbarLayoutDialog;
 struct ToolContext;
 
 // Drag grip at the toolbar's left end, the same vertical grey dots as the "..." on the right.
@@ -100,6 +102,19 @@ public:
     void init_ui();
     // Rearranges per the user's layout: shown buttons on the bar, folded ones for the popup, "..." last.
     virtual void reload_layout();
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 窄窗口将溢出按钮移入“更多”，确认按钮始终保留。
+    // Fold overflow buttons into More while keeping Confirm visible.
+    void set_preview_available_width(int width);
+    void set_preview_below_selection(bool below) { toolbar_below_selection_ = below; }
+    // Linux 注入配置读写，不让原版工具栏依赖 LinuxSettings 或 Windows 设置服务。
+    // Inject Linux storage without coupling shared UI to either platform's settings service.
+    void set_preview_layout_storage(std::function<QJsonArray()> load, std::function<bool(const QJsonArray &)> save);
+    bool preview_layout_dialog_open() const { return !preview_layout_dialog_.isNull(); }
+    // 宿主收到 Esc 时先退出调整；下一次 Esc 才取消整个截图。
+    // Escape first dismisses customization, then the next Escape cancels capture.
+    void cancel_preview_layout_dialog();
+#endif
     // The "..." popup, once created. Pin toolbars have no parent, so it is a top-level window of its own.
     ToolbarMorePopup *more_popup() const { return more_popup_; }
     // Recomputes sizes, layout and position. Only sizes change: tool, checked state and panel values stay.
@@ -150,6 +165,13 @@ public:
     // Unfolds the number panel's label and pointer part showing a selected number's state, or folds it.
     void show_number_extras(const std::optional<QVariantMap> &state);
 signals:
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 预览窗口用此信号避免“更多”菜单与工具设置面板重叠。
+    // The preview uses this signal to avoid overlapping More and settings panels.
+    void preview_more_visibility_changed(bool visible);
+    void preview_layout_changed();
+    void preview_layout_dialog_visibility_changed(bool visible);
+#endif
     void tool_changed(const QString &tool_id);
     void save_clicked();
     void quick_save_clicked();
@@ -263,5 +285,17 @@ private:
     std::vector<std::pair<QPointer<QWidget>, QString>> tooltip_sources_;
     QPointer<ToolbarMorePopup> more_popup_;
     QTimer *more_close_timer_ = nullptr;
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 区分悬停自动展开与用户点击，避免第一次点击关闭刚出现的菜单。
+    // Distinguish hover-open from click-open so the first click cannot immediately close it.
+    bool more_clicked_open_ = false;
+    std::function<QJsonArray()> preview_layout_load_;
+    std::function<bool(const QJsonArray &)> preview_layout_save_;
+    std::optional<QJsonArray> preview_local_layout_;
+    QStringList preview_shown_keys_;
+    QPointer<ToolbarLayoutDialog> preview_layout_dialog_;
+    int preview_available_width_ = -1;
+    QJsonArray preview_current_layout() const;
+#endif
 };
 }

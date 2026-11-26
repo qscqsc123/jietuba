@@ -27,7 +27,7 @@ public:
 };
 
 // Reads and validates a settings file, INI or JSON by its content; any problem throws SettingsFileError.
-QVariantMap read_settings_file(const QString &path);
+QVariantMap read_settings_file(const QString &path, const QStringList &additional_ini_keys = {});
 
 // A read-only configuration equal to "after the import": missing keys take defaults, local
 // keys keep config's values. The returned object owns its QSettings.

@@ -56,7 +56,11 @@ bool NumberTool::on_press(const QPointF &pos, Qt::MouseButton button, ToolContex
     const int number = get_next_number(ctx.scene);
     const double radius = get_radius_for_width(ctx.stroke_width);
     log_debug(T("创建前场景中序号数量: {prev_count}, 将创建序号: {number}", {{"prev_count", number - 1}, {"number", number}}), "NumberTool");
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    auto *item = new NumberItem(number, pos, radius, color_with_opacity(ctx.color, ctx.opacity), linux_style);
+#else
     auto *item = new NumberItem(number, pos, radius, color_with_opacity(ctx.color, ctx.opacity), get_style(ctx));
+#endif
     item->apply_extras_state(extras_defaults(ctx));
     assign_number_order(ctx.scene, item);
     // push() runs redo(), which adds the item to the scene.

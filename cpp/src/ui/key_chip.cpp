@@ -1,6 +1,9 @@
 #include "ui/key_chip.h"
 #include "core/i18n.h"
+#ifndef JIETUBA_LINUX_UI_PREVIEW
 #include "core/shortcut_manager.h"
+#endif
+#include <QKeySequence>
 #include "core/ui_scale.h"
 #include "core/ui_theme.h"
 #include "ui/fluent_lite/theme.h"
@@ -17,11 +20,17 @@ QString tr_text(const char *text) { return i18n_tr(text, "KeyChip"); }
 QString part_display(const QString &part) {
     static const QMap<QString, QString> modifier_names{{"ctrl", "Ctrl"}, {"shift", "Shift"}, {"alt", "Alt"}, {"win", "Win"}, {"meta", "Win"}};
     if (modifier_names.contains(part)) return modifier_names.value(part);
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    if(part=="mousemiddle") return QStringLiteral("中键");
+    const auto sequence=QKeySequence::fromString(part,QKeySequence::PortableText);
+    if(!sequence.isEmpty() && sequence[0].key()!=Qt::Key_unknown) return sequence.toString(QKeySequence::NativeText);
+#else
     if (part == MOUSE_BUTTON_BACK) return tr_text("Mouse Back");
     if (part == MOUSE_BUTTON_FORWARD) return tr_text("Mouse Forward");
     if (part == MOUSE_BUTTON_MIDDLE) return i18n_tr("Middle", "InAppShortcut");
     const auto &parse_map = get_key_parse_map();
     if (const auto it = parse_map.find(part); it != parse_map.end() && get_key_display_map().contains(*it)) return get_key_display_map().value(*it);
+#endif
     // Letters, digits and F keys in capitals; other rare key names capitalised.
     return part.size() <= 3 ? part.toUpper() : part.left(1).toUpper() + part.mid(1).toLower();
 }
@@ -69,7 +78,7 @@ QRectF KeyChipLineEdit::clear_rect() const {
 }
 
 void KeyChipLineEdit::mouseMoveEvent(QMouseEvent *event) {
-    const bool hover = !text().isEmpty() && clear_rect().contains(event->position());
+    const bool hover = clear_visible_ && !text().isEmpty() && clear_rect().contains(event->position());
     if (hover != hover_clear_) {
         hover_clear_ = hover;
         update();
@@ -89,7 +98,7 @@ void KeyChipLineEdit::enterEvent(QEnterEvent *event) {
 }
 
 void KeyChipLineEdit::mousePressEvent(QMouseEvent *event) {
-    if (event->button() == Qt::LeftButton && !text().isEmpty() && clear_rect().contains(event->position())) {
+    if (clear_visible_ && event->button() == Qt::LeftButton && !text().isEmpty() && clear_rect().contains(event->position())) {
         event->accept();
         setText("");
         return;
@@ -121,7 +130,7 @@ void KeyChipLineEdit::paintEvent(QPaintEvent *) {
         paint_plus(painter, QPointF(pad + dialog_scaled(5), rect.center().y()), css_color(t.text_muted));
         painter.setPen(css_color(t.text_muted));
         const QRectF text_rect = rect.adjusted(pad + dialog_scaled(16), 0, -pad, 0);
-        painter.drawText(text_rect, Qt::AlignVCenter | Qt::AlignLeft, metrics.elidedText(tr_text("Add shortcut"), Qt::ElideRight, static_cast<int>(text_rect.width())));
+        painter.drawText(text_rect, Qt::AlignVCenter | Qt::AlignLeft, metrics.elidedText(placeholderText().isEmpty() ? tr_text("Add shortcut") : placeholderText(), Qt::ElideRight, static_cast<int>(text_rect.width())));
         return;
     }
 
@@ -142,9 +151,9 @@ void KeyChipLineEdit::paintEvent(QPaintEvent *) {
     painter.drawRoundedRect(QRectF(this->rect()).adjusted(inset, inset, -inset, -inset), radius, radius);
 
     const QRectF clear = clear_rect();
-    const double text_right = !text().isEmpty() ? clear.left() : rect.right() - pad;
+    const double text_right = clear_visible_ && !text().isEmpty() ? clear.left() : rect.right() - pad;
     const int available = static_cast<int>(text_right - pad);
-    const QColor text_color = css_color(t.text), sep_color = css_color(t.text_muted);
+    const QColor text_color = css_color(isEnabled() ? t.text : t.text_muted), sep_color = css_color(t.text_muted);
     const double baseline = rect.center().y() + (metrics.ascent() - metrics.descent()) / 2.0;
 
     if (parts.isEmpty()) {
@@ -175,7 +184,7 @@ void KeyChipLineEdit::paintEvent(QPaintEvent *) {
         }
     }
 
-    if (!text().isEmpty()) {
+    if (clear_visible_ && !text().isEmpty()) {
         const QColor color = css_color(hover_clear_ ? t.text : t.text_muted);
         const int half = dialog_scaled(4);
         const QPointF center = clear.center();

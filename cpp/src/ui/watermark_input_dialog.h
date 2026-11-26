@@ -41,6 +41,9 @@ public:
     QToolButton *time_button = nullptr;
     QMenu *time_menu = nullptr;
 private:
+    // 选择格式时替换现有占位符；直接点击时间按钮仍可在光标处插入新的占位符。
+    // A menu choice replaces an existing token; the main button still inserts a new one.
+    void choose_time_format(const QString &time_format);
     void sync_time_button();
     // Built on open so each entry shows an example of the current moment.
     void fill_time_menu();

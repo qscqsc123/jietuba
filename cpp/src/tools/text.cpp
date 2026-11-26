@@ -1,14 +1,23 @@
 #include "tools/text.h"
 #include "canvas/items/text_item.h"
 #include "canvas/scene.h"
-#include "core/constants.h"
 #include "core/logger.h"
+#ifndef JIETUBA_LINUX_UI_PREVIEW
+#include "core/constants.h"
 #include "settings/tool_settings.h"
+#endif
 #include <QTextCursor>
 
 namespace jietuba {
 bool TextTool::on_press(const QPointF &pos, Qt::MouseButton button, ToolContext &ctx) {
     if (button != Qt::LeftButton) return true;
+    // 预览的文字初始样式由 Linux 视图提供，不读取 Windows 设置。
+    // The Linux preview supplies initial text styling without Windows settings.
+    #ifdef JIETUBA_LINUX_UI_PREVIEW
+    QFont font;
+    font.setPointSize(16);
+    auto *item = new TextItem("", pos, font, ctx.color, ctx.textOnTop, true);
+    #else
     auto *manager = get_tool_settings_manager();
     const auto font_family = normalize_text_font_family(manager->get_setting("text", "font_family", "").toString());
     const int font_size = manager->get_setting("text", "font_size", 16).toInt();
@@ -32,6 +41,7 @@ bool TextTool::on_press(const QPointF &pos, Qt::MouseButton button, ToolContext 
     QColor bg_color(background_color);
     bg_color.setAlpha(background_opacity);
     item->set_background(background_enabled, bg_color, background_opacity);
+    #endif
     ctx.scene->addItem(item);
     // No AddItemCommand here: the item is empty and the user may click away
     // without typing. TextItem.focusOutEvent commits it once it has content.

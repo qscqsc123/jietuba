@@ -1,4 +1,5 @@
 #pragma once
+#include "gif/_widgets.h"
 #include "gif/video_settings.h"
 #include <QColor>
 #include <QFont>
@@ -32,13 +33,15 @@ class RecordToolbar : public QWidget {
     Q_OBJECT
 public:
     // The capture toolbar's height and visible button cell (its 38 x 40 cell less the 3 px inset).
-    static constexpr int BASE_HEIGHT = 40;
-    static constexpr int BASE_BTN_W = 32;
-    static constexpr int BASE_BTN_H = 34;
-    static constexpr int BASE_ICON = 24;
-    static constexpr int BASE_SEP_HEIGHT = 24;
-    static constexpr int BASE_HANDLE_WIDTH = 28;
-    static constexpr int BASE_HANDLE_ICON = 18;
+    // 两个平台共用规格；保留原公开名称，现有调用方无需调整。
+    // Keep public names while both platforms share a single metrics definition.
+    static constexpr int BASE_HEIGHT = RecordToolbarMetrics::HEIGHT;
+    static constexpr int BASE_BTN_W = RecordToolbarMetrics::BUTTON_WIDTH;
+    static constexpr int BASE_BTN_H = RecordToolbarMetrics::BUTTON_HEIGHT;
+    static constexpr int BASE_ICON = RecordToolbarMetrics::ICON;
+    static constexpr int BASE_SEP_HEIGHT = RecordToolbarMetrics::SEPARATOR_HEIGHT;
+    static constexpr int BASE_HANDLE_WIDTH = RecordToolbarMetrics::HANDLE_WIDTH;
+    static constexpr int BASE_HANDLE_ICON = RecordToolbarMetrics::HANDLE_ICON;
     explicit RecordToolbar(QWidget *parent = nullptr);
     ~RecordToolbar() override;
 

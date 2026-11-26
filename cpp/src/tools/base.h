@@ -24,6 +24,12 @@ struct ToolContext {
     double stroke_width = 0;
     double opacity = 1.0;
     ToolSettingsManager *settings_manager = nullptr;
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 随画布传递 Linux 的绘图设置，不依赖 Windows 的全局配置服务。
+    // Carry Linux drawing preferences with the canvas instead of using the Windows settings singleton.
+    int lineAngle = 45;
+    bool shiftHeld = false, textOnTop = true;
+#endif
 };
 
 class Tool {

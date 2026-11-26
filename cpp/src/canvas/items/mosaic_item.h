@@ -34,6 +34,9 @@ public:
     const SmartEraseFill *smart_erase_fill() const { return fill_.get(); }
     // Smart erase only: whether its pixels are still to come. A rebuild waiting out the edit delay starts now.
     bool smart_erase_in_progress();
+    // 导出前等待当前重建完成，并明确区分成功和无可用结果。
+    // Complete the current reconstruction and report whether a patch exists.
+    bool ensure_smart_erase_result();
     // A move or resize has ended: the rebuild starts without the edit delay.
     void edit_finished();
     // The caller passes the background reduced with the new block size.
@@ -52,6 +55,9 @@ public:
     // must move the anchor too.
     void translate_background_anchor(qreal dx, qreal dy);
     qreal brush_width() const { return brush_width_; }
+    // 更新画笔宽度并重算命中区域；用于样式编辑及其撤销。
+    // Rebuild hit geometry when an editable stroke width changes.
+    void set_brush_width(qreal width);
     int block_size() const { return block_size_; }
     std::optional<qreal> get_stroke_width() const override { return brush_width_; }
     void paint(QPainter *, const QStyleOptionGraphicsItem *, QWidget * = nullptr) override;

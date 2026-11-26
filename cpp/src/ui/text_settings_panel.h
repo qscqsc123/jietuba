@@ -43,6 +43,9 @@ public:
     void set_outline_settings(bool enabled, const QColor &color, const QVariant &width);
     void set_shadow_settings(bool enabled, const QColor &color);
     void set_state_from_item(QGraphicsTextItem *item);
+    // 静默恢复新文字的字体默认值，不把加载配置当作用户编辑。
+    // Restore a new-text font silently, without emitting an edit while loading preferences.
+    void set_font(const QFont &font);
     // Refreshes tooltips after a language switch; the panel lives across captures.
     void retranslate();
     void load_from_config();

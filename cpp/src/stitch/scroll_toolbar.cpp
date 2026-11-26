@@ -58,17 +58,20 @@ void DragHandle::paintEvent(QPaintEvent *) {
     painter.end();
 }
 
-FloatingToolbar::FloatingToolbar(QWidget *parent) : QWidget(parent) {
+FloatingToolbar::FloatingToolbar(QWidget *parent, bool embedded) : QWidget(parent), embedded_(embedded) {
     setup_toolbar_window();
     setup_toolbar_ui();
     // Recomputes sizes when the scale changes; the connection ends with this widget.
+#ifndef JIETUBA_LINUX_UI_PREVIEW
     connect(&get_ui_scale(), &UIScaleManager::scale_changed, this, &FloatingToolbar::apply_scale);
+#endif
 }
 
 void FloatingToolbar::paintEvent(QPaintEvent *) { paint_rounded_panel(this); }
 
 void FloatingToolbar::setup_toolbar_window() {
-    setWindowFlags(Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::Tool);
+    if (embedded_) setWindowFlags(Qt::Widget);
+    else setWindowFlags(Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::Tool);
     setAttribute(Qt::WA_TranslucentBackground);
 }
 
@@ -79,7 +82,13 @@ void FloatingToolbar::showEvent(QShowEvent *event) {
     QTimer::singleShot(0, this, &FloatingToolbar::drop_system_shadow);
 }
 
-void FloatingToolbar::drop_system_shadow() { set_window_rounded_corners(static_cast<quintptr>(winId()), false); }
+void FloatingToolbar::drop_system_shadow() {
+    // Linux 嵌入式面板没有独立的窗口阴影，也无需调用 Windows 原生接口。
+    // Embedded Linux panels have no native window shadow to disable.
+#ifndef JIETUBA_LINUX_UI_PREVIEW
+    if (!embedded_) set_window_rounded_corners(static_cast<quintptr>(winId()), false);
+#endif
+}
 
 void FloatingToolbar::apply_scale() {
     setFixedHeight(scaled(BASE_HEIGHT));
@@ -251,7 +260,11 @@ QMenu *FloatingToolbar::crop_menu() {
 
 void FloatingToolbar::show_crop_menu() {
     auto *menu = crop_menu();
-    menu->exec(crop_btn->mapToGlobal(QPoint(0, crop_btn->height())));
+    // 弹出/拖动期间暂停采集，菜单和提示不得进入待拼接帧。
+    // Suspend capture while transient controls may be visible over desktop content.
+    emit interaction_active(true);
+    menu->exec(crop_menu_position ? crop_menu_position(menu->sizeHint()) : crop_btn->mapToGlobal(QPoint(0, crop_btn->height())));
+    emit interaction_active(false);
     menu->deleteLater();
 }
 
@@ -270,23 +283,32 @@ bool FloatingToolbar::eventFilter(QObject *watched, QEvent *event) {
         const auto type = event->type();
         // Double clicks are not intercepted; DragHandle handles them itself.
         if (type == QEvent::MouseButtonDblClick) return false;
+        if (type != QEvent::MouseButtonPress && type != QEvent::MouseMove && type != QEvent::MouseButtonRelease)
+            return QWidget::eventFilter(watched, event);
         auto *mouse = static_cast<QMouseEvent *>(event);
         if (type == QEvent::MouseButtonPress) {
             if (mouse->button() == Qt::LeftButton) {
                 dragging_ = true;
-                drag_offset_ = mouse->globalPosition().toPoint() - frameGeometry().topLeft();
+                drag_offset_ = embedded_ ? mouse->globalPosition().toPoint() : mouse->globalPosition().toPoint() - frameGeometry().topLeft();
+                if (embedded_) emit interaction_active(true);
                 left_handle->setCursor(Qt::ClosedHandCursor);
             }
             return true;
         }
         if (type == QEvent::MouseMove) {
-            if (mouse->buttons() == Qt::LeftButton && dragging_) move(mouse->globalPosition().toPoint() - drag_offset_);
+            if (mouse->buttons() == Qt::LeftButton && dragging_) {
+                if (embedded_) {
+                    emit embedded_dragged(mouse->globalPosition().toPoint() - drag_offset_);
+                    drag_offset_ = mouse->globalPosition().toPoint();
+                } else move(mouse->globalPosition().toPoint() - drag_offset_);
+            }
             return true;
         }
         if (type == QEvent::MouseButtonRelease) {
             if (mouse->button() == Qt::LeftButton) {
                 if (dragging_) set_manual_positioned(true);
                 dragging_ = false;
+                if (embedded_) emit interaction_active(false);
                 left_handle->setCursor(Qt::SizeAllCursor);
             }
             return true;

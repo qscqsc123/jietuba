@@ -30,6 +30,9 @@ public:
     QSize minimumSizeHint() const override;
     void setErrorState(bool error);
     bool errorState() const { return error_; }
+    // 桌面管理的全局绑定只经门户修改，隐藏本地清除按钮，避免误导。
+    // Desktop-managed bindings hide local clearing; the portal owns changes.
+    void setClearButtonVisible(bool visible) {clear_visible_=visible; update();}
 protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void leaveEvent(QEvent *event) override;
@@ -40,6 +43,7 @@ private:
     QRectF clear_rect() const;
     static void paint_plus(QPainter &painter, const QPointF &center, const QColor &color);
     bool error_ = false;
+    bool clear_visible_ = true;
     bool hover_clear_ = false;
 };
 

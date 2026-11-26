@@ -9,6 +9,23 @@
 
 // Small widgets and helpers shared by the GIF module.
 namespace jietuba {
+/**
+ * 录制条共用的视觉规格与工具顺序，Windows 和 Linux 均从此处读取。
+ * 只描述界面，不持有录制状态或依赖平台设置。
+ * Shared recording metrics and tool order, independent of platform and state.
+ */
+struct RecordToolbarMetrics {
+    static constexpr int HEIGHT = 40, BUTTON_WIDTH = 32, BUTTON_HEIGHT = 34, ICON = 24;
+    static constexpr int SEPARATOR_HEIGHT = 24, HANDLE_WIDTH = 28, HANDLE_ICON = 18;
+    static constexpr int MARGIN = 8, SPACING = 6;
+};
+struct RecordingDrawTool { const char *id; const char *svg; const char *tip; };
+inline constexpr RecordingDrawTool RECORDING_DRAW_TOOLS[] = {
+    {"pen", "画笔.svg", "画笔"}, {"rect", "方框.svg", "矩形"},
+    {"ellipse", "圆框.svg", "椭圆"}, {"arrow", "箭头.svg", "箭头"},
+    {"text", "文字.svg", "文字"}, {"eraser", "橡皮.svg", "橡皮擦"},
+};
+QString recording_time_style();
 // Recording and playback share transparent controls; the panel is painted by paint_rounded_panel.
 QString toolbar_style();
 

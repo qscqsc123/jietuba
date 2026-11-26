@@ -3,11 +3,6 @@
 #include <stdexcept>
 
 namespace jietuba {
-void RecordingOptions::validate() const {
-    if (fps < 1 || fps > 60) throw std::invalid_argument("Recording FPS must be between 1 and 60");
-    if (bitrate < 500000 || bitrate > 50000000) throw std::invalid_argument("Video bitrate must be between 500000 and 50000000 bits/s");
-}
-
 RecordingOptions RecordingOptions::from_config(const ToolSettingsManager *config) {
     const RecordingOptions defaults;
     RecordingOptions values;

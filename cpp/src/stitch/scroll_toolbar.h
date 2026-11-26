@@ -41,7 +41,9 @@ public:
     static constexpr int BASE_BTN_WIDTH = 42;
     static constexpr int BASE_ICON = 24;
     static constexpr int BASE_PILL_HEIGHT = 26;
-    explicit FloatingToolbar(QWidget *parent = nullptr);
+    // 嵌入模式供 Wayland 覆盖层使用：复用同一 UI，不创建独立的原生工具窗口。
+    // Embedded mode reuses the same UI inside a Wayland layer surface.
+    explicit FloatingToolbar(QWidget *parent = nullptr, bool embedded = false);
     // Recomputes sizes for the current scale; direction and button states stay.
     void apply_scale();
     // Updates the direction button's icon and text.
@@ -52,6 +54,9 @@ public:
     bool manual_positioned() const { return manual_positioned_; }
     // Puts the toolbar back beside the capture window; set by the window.
     std::function<void()> reposition;
+    // 嵌入覆盖层提供弹出菜单的安全位置，防止菜单进入采集区域。
+    // The embedding surface supplies a crop-safe popup location.
+    std::function<QPoint(const QSize &)> crop_menu_position;
 
     DragHandle *left_handle;
     QLabel *size_label;
@@ -66,6 +71,8 @@ public:
 
 signals:
     void direction_changed();
+    void interaction_active(bool active);
+    void embedded_dragged(const QPoint &delta);
     void auto_scroll_clicked();
     // "top" removes the content before the current view, "bottom" after it.
     void crop_requested(const QString &side);
@@ -97,6 +104,7 @@ private:
     // Double click on the handle: back to automatic placement, repositioned at once.
     void reset_auto_position();
 
+    bool embedded_ = false;
     bool dragging_ = false;
     QPoint drag_offset_;
     // True after the user drags it, which stops automatic placement.

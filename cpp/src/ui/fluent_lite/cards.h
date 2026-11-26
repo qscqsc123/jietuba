@@ -112,6 +112,7 @@ public:
     ExpandLayout *cardLayout;
 protected:
     void showEvent(QShowEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
     // Per group, not per page: a page-wide width would stretch short controls.
     void sync_control_column();
 private:

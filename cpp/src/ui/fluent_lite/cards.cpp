@@ -4,6 +4,7 @@
 #include "ui/fluent_lite/labels.h"
 #include "ui/fluent_lite/switch.h"
 #include <QPainter>
+#include <QResizeEvent>
 
 namespace jietuba {
 namespace {
@@ -240,7 +241,18 @@ void SettingCardGroup::sync_control_column() {
 }
 
 void SettingCardGroup::adjustSize() {
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // Linux 设置页先离屏构造所有分组：此时 sizeHint 会按零宽度把描述文字
+    // 错估成多行，随后把标题拉高。按实际宽度计算卡片内容，恢复原版紧凑分组。
+    // Linux builds pages before they have a viewport width. Use height-for-width
+    // instead of the early size hint, which otherwise stretches group titles.
+    const int contentWidth = std::max(1, width());
+    const int compactHeight = titleLabel->sizeHint().height() + vBoxLayout->spacing()
+        + cardLayout->heightForWidth(contentWidth);
+    setFixedHeight(compactHeight);
+#else
     setMinimumHeight(vBoxLayout->sizeHint().height());
+#endif
     updateGeometry();
 }
 
@@ -253,6 +265,15 @@ void SettingCardGroup::showEvent(QShowEvent *event) {
     QWidget::showEvent(event);
     sync_control_column();
     adjustSize();
+}
+
+void SettingCardGroup::resizeEvent(QResizeEvent *event) {
+    QWidget::resizeEvent(event);
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 页面缩窄时说明文字会换行；只在宽度变化时重新算高，避免高度事件递归。
+    // Recompute the compact height when wrapping changes with viewport width.
+    if (event->size().width() != event->oldSize().width()) adjustSize();
+#endif
 }
 
 SimpleCardWidget::SimpleCardWidget(QWidget *parent) : QFrame(parent) {

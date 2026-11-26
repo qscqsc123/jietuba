@@ -103,15 +103,26 @@ void MosaicTool::on_activate(ToolContext &ctx) {
     Tool::on_activate(ctx);
     // Computed once and cached on the background: the cost lands on the toolbar
     // click instead of the first press of a stroke.
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    ctx.scene->background->reduced_image(linux_block_size);
+#else
     ctx.scene->background->reduced_image(get_block_size(ctx));
+#endif
 }
 
 bool MosaicTool::on_press(const QPointF &pos, Qt::MouseButton button, ToolContext &ctx) {
     if (button != Qt::LeftButton) return false;
     remove_live_item(ctx);
     reset();
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    draw_mode = linux_mode;
+    const int block_size = linux_block_size;
+    const auto style = linux_style;
+#else
     draw_mode = get_draw_mode(ctx);
     const int block_size = get_block_size(ctx);
+    const auto style = get_style(ctx);
+#endif
     const auto reduced = ctx.scene->background->reduced_image(block_size);
     if (reduced.isNull()) return false;
     const bool fill_mode = draw_mode == MODE_RECT;
@@ -119,7 +130,7 @@ bool MosaicTool::on_press(const QPointF &pos, Qt::MouseButton button, ToolContex
     if (fill_mode) new_path.addRect(QRectF(pos, pos));
     else new_path = QPainterPath(pos);
     // The reduced image is the background's cached copy; QImage is implicitly shared.
-    auto *item = new MosaicItem(new_path, ctx.stroke_width, block_size, reduced, ctx.scene->scene_rect, fill_mode, kind_of(get_style(ctx)));
+    auto *item = new MosaicItem(new_path, ctx.stroke_width, block_size, reduced, ctx.scene->scene_rect, fill_mode, kind_of(style));
     item->set_drawing(true);
     ctx.scene->addItem(item);
     path = new_path;

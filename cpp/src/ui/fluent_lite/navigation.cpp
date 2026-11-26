@@ -75,7 +75,13 @@ QPushButton *NavigationInterface::addItem(const QString &route_key, const IconSo
     auto *button = new NavItemButton(text, this);
     button->setObjectName("FluentLiteNavItem");
     button->setCheckable(true);
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // Linux 侧栏以 24px 图标搭配 15px 文字；放大点击目标内的图标，不改变原版 Windows 指标。
+    // Use a balanced 24px/15px icon/text pair on Linux while retaining Windows metrics.
+    button->setIconSize(QSize(dialog_scaled(24), dialog_scaled(24)));
+#else
     button->setIconSize(QSize(dialog_scaled(20), dialog_scaled(20)));
+#endif
     button->setCursor(Qt::PointingHandCursor);
     // Labels are visible already; a tooltip only when it adds context.
     if (!tooltip.isEmpty()) button->setToolTip(tooltip);
@@ -94,6 +100,11 @@ QPushButton *NavigationInterface::addItem(const QString &route_key, const IconSo
 
 void NavigationInterface::style_button(QPushButton *button) {
     const auto &t = ui_tokens(button);
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    constexpr int labelSize=15;
+#else
+    constexpr int labelSize=16;
+#endif
     // The checked item keeps the regular weight: at this size a bold face snaps its strokes to
     // other pixels, so the label would seem to jump when selected.
     apply_style_sheet(button, QString(R"(
@@ -102,7 +113,7 @@ void NavigationInterface::style_button(QPushButton *button) {
                 font: %6px %7; }
             QPushButton#FluentLiteNavItem:hover { color: %4; background: %8; }
             QPushButton#FluentLiteNavItem:checked { color: %9; background: %10; }
-        )").arg(dialog_scaled(40)).arg(dialog_scaled(2)).arg(dialog_scaled(14)).arg(t.text).arg(dialog_scaled(8)).arg(dialog_scaled(16))
+        )").arg(dialog_scaled(40)).arg(dialog_scaled(2)).arg(dialog_scaled(14)).arg(t.text).arg(dialog_scaled(8)).arg(dialog_scaled(labelSize))
         .arg(FONT_FAMILY, t.surface_strong, t.accent_text, t.accent_soft));
 }
 

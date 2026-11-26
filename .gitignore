@@ -1,0 +1,67 @@
+# 编译产物
+build/
+cpp/build/
+*.o
+*.so
+*.a
+*.exe
+*.dll
+*.dylib
+moc_*.cpp
+qrc_*.cpp
+*.autogen/
+
+# IDE 配置
+.vscode/
+.idea/
+*.code-workspace
+.clangd
+.cache/
+compile_commands.json
+
+# 临时文件
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 备份文件
+backups/
+*.backup
+*.bak
+*.old
+
+# 私有配置
+.agents/
+.aws/
+.codex/
+.cursor/
+
+# 文档临时文件
+*.pdf
+
+# Qt 临时文件
+*.qm
+*.pro.user*
+.qmake.stash
+
+# Python 相关（如果有）
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Rust 编译产物
+target/
+Cargo.lock
+*.rlib
+*.pdb
+
+# 测试输出
+test-results/
+*.test
+
+# 日志
+*.log

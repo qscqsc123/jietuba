@@ -53,6 +53,13 @@ public:
     std::optional<QPainterPath> path;
     std::optional<QPointF> start_pos;
     QString draw_mode = MODE_FREEHAND;
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // Linux 当前没有接入原版设置管理器；面板将本会话的默认值写在工具上。
+    // Linux preview keeps panel defaults here until the shared settings manager is ported.
+    QString linux_mode = MODE_FREEHAND;
+    QString linux_style = STYLE_PIXELATE;
+    int linux_block_size = DEFAULT_BLOCK_SIZE;
+#endif
     std::optional<QPointF> last_point;
 private:
     static QVariant read_setting(const ToolContext &ctx, const QString &key);

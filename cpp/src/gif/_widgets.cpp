@@ -9,6 +9,13 @@
 #include <QScreen>
 
 namespace jietuba {
+QString recording_time_style() {
+    // 与 Windows 原时间按钮完全同一份 QSS，包含点击倒计时菜单的悬停反馈。
+    // One time-button stylesheet, including the Windows countdown hover feedback.
+    return QString("QPushButton { color: #596579; font-size: %1px; border: none; min-width: %2px; padding: %3px; }"
+                   "QPushButton:hover { background: rgba(15,23,42,0.07); }")
+        .arg(scaled(12)).arg(scaled(52)).arg(scaled(4));
+}
 QString toolbar_style() {
     // Button fills match the capture toolbar.
     const auto tc = get_theme().theme_color();
@@ -29,7 +36,11 @@ QString toolbar_style() {
 }
 
 void popup_menu(QMenu *menu, QWidget *anchor, bool below) {
+#ifndef JIETUBA_LINUX_UI_PREVIEW
+    // Windows 用窗口排除 API；Linux 控制器将工具栏放在采集区域外。
+    // Windows uses native capture exclusion; Linux places controls outside the crop.
     if (auto *toolbar = qobject_cast<RecordToolbar *>(anchor->window())) toolbar->track_capture_exclusion(menu);
+#endif
     // The menu is always light, and the text colour must sit on ::item: the global
     // style sheet colours QMenu::item by UI theme, which a colour on QMenu alone does
     // not override, giving white text in dark mode.
@@ -85,6 +96,9 @@ void ClickMenuButton::apply_style() {
 }
 
 void ClickMenuButton::set_enabled(bool enabled) {
+    // 录制时高频刷新计时文字，未变的状态不必重复设置 QSS 触发布局。
+    // Frequent recording ticks should not repolish menus when their state is unchanged.
+    if (enabled_flag_ == enabled && isEnabled() == enabled) return;
     if (!enabled && menu_) menu_->close();
     enabled_flag_ = enabled;
     setEnabled(enabled);
@@ -102,6 +116,7 @@ void ClickMenuButton::show_menu() {
     connect(menu, &QMenu::aboutToHide, this, [this] { menu_ = nullptr; });
     for (int i = 0; i < static_cast<int>(options_.size()); ++i) {
         auto *action = new QAction(options_[i].first, menu);
+        action->setData(options_[i].second);
         action->setCheckable(true);
         action->setChecked(i == current_index_);
         connect(action, &QAction::triggered, this, [this, i] { on_select(i); });

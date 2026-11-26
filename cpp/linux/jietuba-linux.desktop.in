@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=截图吧
+GenericName=Screenshot utility
+Comment=Screenshot and annotate on Wayland
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/jietuba-linux
+Icon=io.github.jietuba.LinuxPreview
+Terminal=false
+Categories=Graphics;Utility;
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2

@@ -38,6 +38,9 @@ public:
     static constexpr int BASE_FONT_COMBO_WIDTH = 120, BASE_ARROW_PREVIEW_WIDTH = 40;
     explicit NumberSettingsPanel(QWidget *parent = nullptr);
     void set_next_number(int value);
+    // 返回面板显示的下一个编号，供界面状态同步和回归测试使用。
+    // Expose the displayed next number for view synchronization and regression tests.
+    int next_number() const { return next_value_; }
     // Sets without emitting style_changed.
     void set_style(const QString &style);
     QString current_style() const { return current_style_; }

@@ -12,6 +12,7 @@
 #include <QLabel>
 #include <QScreen>
 #include <QShortcut>
+#include <QRegularExpression>
 #include <QTextCursor>
 #include <QVBoxLayout>
 
@@ -145,6 +146,53 @@ void WatermarkInputDialog::insert_time(const QString &time_format) {
     edit->setFocus();
 }
 
+void WatermarkInputDialog::choose_time_format(const QString &time_format) {
+    time_format_ = time_format;
+    sync_time_button();
+    const QString text = edit->toPlainText();
+    static const QRegularExpression token(R"(\$[^$\n]*\$)");
+    const auto cursor = edit->textCursor();
+    const int at = cursor.position();
+    int first = -1, last = -1;
+    auto matches = token.globalMatch(text);
+    while (matches.hasNext()) {
+        const auto match = matches.next();
+        if (first < 0) first = int(match.capturedStart());
+        // 优先选择光标所在或光标左侧最近的占位符。
+        // Prefer the token containing the caret, then the nearest one to its left.
+        if (match.capturedStart() <= at) { first = int(match.capturedStart()); last = int(match.capturedEnd()); }
+    }
+    if (first < 0) { insert_time(); return; }
+    if (last < 0) {
+        const auto match = token.match(text, first);
+        last = int(match.capturedEnd());
+    }
+    // 连续点击旧版本的菜单可能留下紧挨着的重复时间占位符，一次替换即可清理。
+    // Collapse adjacent tokens left by repeated menu choices in older versions.
+    int start = first, end = last;
+    while (start > 0) {
+        auto preceding = token.globalMatch(text.left(start));
+        int adjacent = -1;
+        while (preceding.hasNext()) {
+            const auto match = preceding.next();
+            if (match.capturedEnd() == start) adjacent = int(match.capturedStart());
+        }
+        if (adjacent < 0) break;
+        start = adjacent;
+    }
+    while (end < text.size()) {
+        const auto next = token.match(text, end);
+        if (!next.hasMatch() || next.capturedStart() != end) break;
+        end = int(next.capturedEnd());
+    }
+    auto replacement = edit->textCursor();
+    replacement.setPosition(start);
+    replacement.setPosition(end, QTextCursor::KeepAnchor);
+    replacement.insertText(time_token(time_format_));
+    edit->setTextCursor(replacement);
+    edit->setFocus();
+}
+
 void WatermarkInputDialog::sync_time_button() {
     time_button->setText(time_format_short_name(time_format_));
     for (const auto &entry : watermark_time_formats()) {
@@ -165,7 +213,7 @@ void WatermarkInputDialog::fill_time_menu() {
         action->setCheckable(true);
         action->setChecked(time_format_ == entry.format);
         const QString format = entry.format;
-        connect(action, &QAction::triggered, this, [this, format] { insert_time(format); });
+        connect(action, &QAction::triggered, this, [this, format] { choose_time_format(format); });
         time_menu->addAction(action);
     }
 }

@@ -1,5 +1,7 @@
 #include "ui/inapp_key_edit.h"
+#ifndef JIETUBA_LINUX_UI_PREVIEW
 #include "core/shortcut_manager.h"
+#endif
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QMouseEvent>
@@ -12,6 +14,9 @@ QStringList modifier_parts(Qt::KeyboardModifiers modifiers) {
     if (modifiers & Qt::ControlModifier) parts.append("Ctrl");
     if (modifiers & Qt::ShiftModifier) parts.append("Shift");
     if (modifiers & Qt::AltModifier) parts.append("Alt");
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    if (modifiers & Qt::MetaModifier) parts.append("Meta");
+#endif
     return parts;
 }
 
@@ -47,7 +52,7 @@ void InAppKeyEdit::mousePressEvent(QMouseEvent *event) {
     event->accept();
     setFocus(Qt::MouseFocusReason);
     QStringList parts = modifier_parts(event->modifiers());
-    parts.append(MOUSE_BUTTON_MIDDLE);
+    parts.append(QStringLiteral("mousemiddle"));
     // The configuration stores this text, so it must be the parser's lower-case form.
     setText(parts.join("+").toLower());
 }
@@ -108,8 +113,10 @@ bool InAppKeyEdit::is_text_editing_key(QKeyEvent *event) {
 }
 
 QString InAppKeyEdit::key_to_text(int key) {
+#ifndef JIETUBA_LINUX_UI_PREVIEW
     const auto &display_map = get_key_display_map();
     if (display_map.contains(key)) return display_map.value(key);
+#endif
     if (Qt::Key_F1 <= key && key <= Qt::Key_F24) return QString("F%1").arg(key - Qt::Key_F1 + 1);
     return QKeySequence(key).toString(QKeySequence::PortableText);
 }

@@ -28,9 +28,15 @@ bool PenTool::on_press(const QPointF &pos, Qt::MouseButton button, ToolContext &
     return true;
 }
 
-void PenTool::on_move(const QPointF &pos, ToolContext &) {
+void PenTool::on_move(const QPointF &pos, ToolContext &ctx) {
     if (!(drawing && current_item && stroke)) return;
-    if (stroke->extend(pos, shift_held())) current_item->extend_path(stroke->path, stroke->take_dirty_from());
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    const bool straight = ctx.shiftHeld;
+#else
+    Q_UNUSED(ctx);
+    const bool straight = shift_held();
+#endif
+    if (stroke->extend(pos, straight)) current_item->extend_path(stroke->path, stroke->take_dirty_from());
 }
 
 void PenTool::on_release(const QPointF &, ToolContext &ctx) { finish(ctx); }

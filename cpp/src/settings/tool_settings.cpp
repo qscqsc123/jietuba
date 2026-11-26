@@ -1,4 +1,5 @@
 #include "settings/tool_settings.h"
+#include "settings/settings_transfer.h"
 #include <algorithm>
 #include "core/constants.h"
 #include "core/data_location.h"
@@ -75,27 +76,6 @@ template <> QVariant default_value<QVariantList>(const QVariantList &values) {
     for (const auto &value : values) result.append(value.typeId() == QMetaType::Int ? default_value(value.toInt()) : value);
     return result;
 }
-}
-
-const std::vector<AppSetting> &APP_SETTINGS() {
-    static const std::vector<AppSetting> settings = {
-#define SETTING_AS(accessor, name, path, Type, initial, scope, getter, setter) {#name, path, SettingScope::scope},
-#define SETTING(name, path, Type, initial, scope, getter, setter) SETTING_AS(name, name, path, Type, initial, scope, getter, setter)
-#include "settings/app_settings.inc"
-#undef SETTING
-#undef SETTING_AS
-    };
-    return settings;
-}
-
-const QSet<QString> &LOCAL_SETTING_PATHS() {
-    static const QSet<QString> paths = [] {
-        QSet<QString> result;
-        for (const auto &setting : APP_SETTINGS())
-            if (setting.scope == SettingScope::Local) result.insert(setting.path);
-        return result;
-    }();
-    return paths;
 }
 
 QSettings &SettingsStore::store(const QString &key) const { return LOCAL_SETTING_PATHS().contains(key) ? *local_ : *settings_; }
@@ -745,5 +725,18 @@ bool ToolSettingsManager::should_show_main_window_on_start() {
     if (show) log_debug(T("根据用户设置：显示设置窗口"), "Startup");
     else log_debug(T("根据用户设置：不自动打开设置窗口"), "Startup");
     return show;
+}
+
+namespace settings_transfer {
+PreviewConfig preview_config(ToolSettingsManager *config, const QVariantMap &values, const QString &ini_path) {
+    PreviewConfig preview;
+    preview.settings = std::make_unique<QSettings>(ini_path, QSettings::IniFormat);
+    preview.settings->clear();
+    for (const auto &key : LOCAL_SETTING_PATHS())
+        if (config->qsettings.contains(key)) preview.settings->setValue(key, config->qsettings.value(key));
+    for (auto it = values.begin(); it != values.end(); ++it) preview.settings->setValue(it.key(), it.value());
+    preview.config = std::make_unique<ToolSettingsManager>(*preview.settings);
+    return preview;
+}
 }
 }

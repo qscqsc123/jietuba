@@ -5,6 +5,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPen>
+#include <QPointer>
 #include <QPixmap>
 #include <QPushButton>
 #include <QTimer>
@@ -175,6 +176,9 @@ protected:
     QString extra_qss_;
 private:
     QTimer close_timer_;
+    // 记录原始面板；Linux 预览的弹出框可能改为宿主窗口的子控件。
+    // Track the owning panel even when the Linux preview reparents the popup.
+    QPointer<QWidget> owner_panel_;
 };
 
 // Panels with a line-style selector (pen and shape panels).

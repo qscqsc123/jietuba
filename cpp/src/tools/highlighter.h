@@ -9,6 +9,11 @@ class StrokeItem;
 // Holding Shift in a freehand stroke draws a straight line like the pen.
 class HighlighterTool : public Tool {
 public:
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // Linux 面板在没有原版设置服务时保存当前绘制模式。
+    // The Linux panel keeps its drawing mode until the shared settings service is ported.
+    QString linux_mode = QStringLiteral("freehand");
+#endif
     static inline const QString MODE_FREEHAND = "freehand";
     static inline const QString MODE_RECT = "rect";
     static constexpr double MIN_SIZE = 10;

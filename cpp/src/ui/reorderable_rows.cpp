@@ -74,10 +74,15 @@ ReorderableRowList::ReorderableRowList(QWidget *parent) : QScrollArea(parent) {
 }
 
 DraggableRow *ReorderableRowList::add_row(DraggableRow *row, int index) {
+    // 恢复默认会重新加入同一批行，只连接一次，防止每次恢复都叠加拖动回调。
+    // Reset reuses these row widgets; wire each once instead of multiplying drag callbacks.
+    const bool needs_connections = row->parentWidget()!=card_;
     row->setParent(card_);
-    connect(row->grip, &DragGrip::pressed, row, [row] { row->set_dragging(true); });
-    connect(row->grip, &DragGrip::dragged, this, [this, row](int global_y) { drag_row(row, global_y); });
-    connect(row->grip, &DragGrip::released, row, [row] { row->set_dragging(false); });
+    if (needs_connections) {
+        connect(row->grip, &DragGrip::pressed, row, [row] { row->set_dragging(true); });
+        connect(row->grip, &DragGrip::dragged, this, [this, row](int global_y) { drag_row(row, global_y); });
+        connect(row->grip, &DragGrip::released, row, [row] { row->set_dragging(false); });
+    }
     if (index < 0) layout_->addWidget(row);
     else layout_->insertWidget(index, row);
     return row;

@@ -541,6 +541,14 @@ void TextSettingsPanel::on_font_changed() {
     emit font_changed(font);
 }
 
+void TextSettingsPanel::set_font(const QFont &font) {
+    const QSignalBlocker blocker(this);
+    font_combo->setCurrentText(font.family());
+    size_spin->setValue(std::max(1,font.pointSize()));
+    bold_btn->setChecked(font.bold()); italic_btn->setChecked(font.italic()); underline_btn->setChecked(font.underline());
+    current_font=font;
+}
+
 void TextSettingsPanel::set_state_from_item(QGraphicsTextItem *item) {
     if (!item) return;
     // Blocked so the updates do not loop back.

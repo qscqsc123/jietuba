@@ -215,7 +215,17 @@ void Toolbar::init_ui() {
 
     // "...": hover or click opens folded buttons; registered like a button, arranged last.
     more_btn = new ToolbarMoreHandle(this);
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    connect(more_btn, &QAbstractButton::clicked, this, [this] {
+        if (!isVisible()) return;
+        // 悬停已展开时第一次点击保持菜单，下一次点击才主动关闭。
+        // The first click on a hover-opened menu keeps it open; a second click closes it.
+        if (more_popup_ && more_popup_->isVisible() && more_clicked_open_) hide_more_popup();
+        else { show_more_popup(); more_clicked_open_ = true; }
+    });
+#else
     connect(more_btn, &QAbstractButton::clicked, this, &Toolbar::show_more_popup);
+#endif
     more_btn->installEventFilter(this);
     buttons_["more"] = more_btn;
     button_order_.append("more");
@@ -231,7 +241,10 @@ void Toolbar::init_ui() {
         {"watermark", watermark_btn}, {"arrow", arrow_btn}, {"number", number_btn}, {"rect", rect_btn},
         {"ellipse", ellipse_btn}, {"text", text_btn}, {"eraser", eraser_btn},
     };
+    // Linux 预览由 CapturePreview 管理可用面板，避免初始化尚未移植的服务。
+    // The Linux preview manages available panels itself and skips unported services.
     // Keep common panels ready: highlighter/pen, rectangle/ellipse and numbering.
+#ifndef JIETUBA_LINUX_UI_PREVIEW
     ensure_panel_for_tool("highlighter");
     ensure_panel_for_tool("rect");
     ensure_panel_for_tool("number");
@@ -239,6 +252,9 @@ void Toolbar::init_ui() {
     // Connections end with this toolbar.
     connect(I18nManager::instance().language_signals(), &I18nSignals::language_changed, this, [this](const QString &) { retranslate(); });
     connect(&get_ui_scale(), &UIScaleManager::scale_changed, this, &Toolbar::apply_scale);
+#else
+    reload_layout();
+#endif
 }
 
 QPushButton *Toolbar::add_button(const QString &key, const QString &icon, const char *tooltip, int width, std::function<void()> on_click, bool checkable) {
@@ -275,7 +291,13 @@ void Toolbar::apply_button_sizes() {
 }
 
 QPushButton *Toolbar::add_tool_button(const QString &tool_id, const QString &icon, const char *tooltip, int width) {
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 预览入口会连接工具按钮，避免触发完整截图窗口的依赖。
+    // The preview host connects tool buttons without the full capture-window dependencies.
+    return add_button(tool_id, icon, tooltip, width, [] {}, true);
+#else
     return add_button(tool_id, icon, tooltip, width, [this, tool_id] { on_tool_clicked(tool_id); }, true);
+#endif
 }
 
 void Toolbar::make_floating(QWidget *widget) const {
@@ -310,7 +332,14 @@ void Toolbar::arrange(const QStringList &keys) {
 }
 
 void Toolbar::reload_layout() {
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 宽度已知时也必须应用自定义顺序；不能先排全量按钮再靠旧宽度缓存跳过刷新。
+    // Reapply custom ordering at the known width, without bypassing it through a stale width cache.
+    if (preview_available_width_>0) { set_preview_available_width(preview_available_width_); return; }
+    const auto layout = preview_current_layout();
+#else
     const auto layout = toolbar_layout::load_layout(*get_tool_settings_manager(), layout_profile);
+#endif
     folded_keys_.clear();
     QStringList shown;
     for (const auto &value : layout) {
@@ -322,6 +351,52 @@ void Toolbar::reload_layout() {
     shown.append("more");
     arrange(shown);
 }
+
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+QJsonArray Toolbar::preview_current_layout() const {
+    const QJsonArray entries = preview_layout_load_ ? preview_layout_load_()
+        : preview_local_layout_.value_or(toolbar_layout::default_layout(layout_profile));
+    return toolbar_layout::normalize_layout(entries,layout_profile);
+}
+void Toolbar::set_preview_layout_storage(std::function<QJsonArray()> load, std::function<bool(const QJsonArray &)> save) {
+    preview_layout_load_=std::move(load); preview_layout_save_=std::move(save); reload_layout();
+}
+void Toolbar::set_preview_available_width(int width) {
+    preview_available_width_=std::max(1,width);
+    const auto layout = preview_current_layout();
+    // 预留拖动柄、更多按钮和确认按钮；其余按钮依次放入剩余空间。
+    // Reserve the grip, More and Confirm, then fit the other buttons in order.
+    int remaining = width - drag_handle->width() - button_widths_.value("more");
+    for (const auto &key:layout_profile.locked) remaining-=button_widths_.value(key);
+    QStringList shown;
+    QStringList folded;
+    for (const auto &value : layout) {
+        const auto entry = value.toArray();
+        const auto key = entry[0].toString();
+        // 原版锁定项（截图的“确认”）保留其顺序与可见性，不参与溢出折叠。
+        // Locked original actions keep their order and visibility instead of folding on overflow.
+        if (layout_profile.locked.contains(key)) { shown.append(key); continue; }
+        const int buttonWidth = button_widths_.value(key);
+        if (entry[1].toString() == toolbar_layout::SHOW && buttonWidth <= remaining) {
+            shown.append(key);
+            remaining -= buttonWidth;
+        } else if (entry[1].toString() != toolbar_layout::HIDE) {
+            folded.append(key);
+        }
+    }
+    shown << "more";
+    // 不在尺寸未改变时反复重排，避免关闭或移动正在操作的弹出框。
+    // Avoid rearranging unchanged layouts while a popup is being used.
+    // 只换顺序、不改可见模式时，folded 与宽度都可能不变；必须同时比较实际显示顺序。
+    // Reordering shown buttons can leave width/folding unchanged; compare displayed order as well.
+    if (folded_keys_ == folded && preview_shown_keys_ == shown && property("preview_width").toInt() == width) return;
+    hide_more_popup();
+    folded_keys_ = folded;
+    preview_shown_keys_ = shown;
+    setProperty("preview_width", width);
+    arrange(shown);
+}
+#endif
 
 QList<QWidget *> Toolbar::panels() const {
     QList<QWidget *> result;
@@ -348,10 +423,17 @@ void Toolbar::apply_scale() {
 }
 
 void Toolbar::reposition_self() {
+#ifndef JIETUBA_LINUX_UI_PREVIEW
     if (auto *host = dynamic_cast<CanvasHost *>(host_window())) host->update_toolbar_position();
+#endif
 }
 
 void Toolbar::show_more_popup() {
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 收起/隐藏工具栏时迟到的悬停事件不能重新显示其兄弟弹出框，防止贴图菜单残留或乱跳。
+    // A late hover after hiding the bar must not reopen its sibling popup on the pin host.
+    if (!isVisible() || preview_layout_dialog_) return;
+#endif
     // Created on first use: most captures and pins never open it, so they skip the extra window.
     if (!more_popup_) {
         more_popup_ = new ToolbarMorePopup(parentWidget());
@@ -361,11 +443,28 @@ void Toolbar::show_more_popup() {
         connect(more_popup_, &ToolbarMorePopup::hover_changed, this, &Toolbar::on_more_hover);
         more_close_timer_ = new QTimer(this);
         more_close_timer_->setSingleShot(true);
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+        // 指针跨过按钮与菜单之间的间距需要时间，进入菜单或按钮就取消关闭。
+        // Give the pointer time to cross the gap; entering either surface cancels closing.
+        more_close_timer_->setInterval(650);
+        connect(more_close_timer_, &QTimer::timeout, this, [this] {
+            if ((more_btn && more_btn->underMouse()) || (more_popup_ && more_popup_->underMouse())) return;
+            hide_more_popup();
+        });
+#else
         more_close_timer_->setInterval(300);
         connect(more_close_timer_, &QTimer::timeout, this, &Toolbar::hide_more_popup);
+#endif
     }
     more_close_timer_->stop();
-    if (more_popup_->isVisible()) return;
+    if (more_popup_->isVisible()) {
+        // 鼠标从按钮进入菜单也会调用这里；已打开时只取消关闭计时。
+        // Entering the popup also reaches here; an open menu must remain open.
+        return;
+    }
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    emit preview_more_visibility_changed(true);
+#endif
     int cell_width = 0;
     QList<QAbstractButton *> folded;
     for (const auto &key : folded_keys_) {
@@ -385,12 +484,48 @@ void Toolbar::on_more_hover(bool hovering) {
 
 void Toolbar::hide_more_popup() {
     if (more_popup_) {
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+        const bool wasVisible = more_popup_->isVisible();
+        more_clicked_open_ = false;
+#endif
         more_close_timer_->stop();
         more_popup_->hide();
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+        if (wasVisible) emit preview_more_visibility_changed(false);
+#endif
     }
 }
 
 void Toolbar::open_layout_dialog() {
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    hide_more_popup();
+    if (preview_layout_dialog_) { preview_layout_dialog_->setFocus(Qt::OtherFocusReason); return; }
+    QMap<QString,QIcon> icons;
+    for (const auto &key:button_order_) icons[key]=buttons_[key]->icon();
+    // 直接复用 Windows 排序列表和显示模式对话框；仅配置服务与窗口生命周期使用 Linux 适配。
+    // Reuse the Windows reorderable dialog itself; adapt only storage and window lifetime.
+    auto *dialog=new ToolbarLayoutDialog(preview_current_layout(),icons,host_window(),layout_profile);
+    preview_layout_dialog_=dialog; dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setObjectName(QStringLiteral("linuxToolbarLayoutDialog"));
+    emit preview_layout_dialog_visibility_changed(true);
+    dialog->set_submit_handler([this,dialog]() -> QString {
+        const auto entries=toolbar_layout::normalize_layout(dialog->entries(),layout_profile);
+        if (preview_layout_save_ && !preview_layout_save_(entries)) {
+            return QStringLiteral("无法保存工具栏布局，请检查配置文件权限后重试。");
+        }
+        if (!preview_layout_save_) preview_local_layout_=entries;
+        reload_layout(); emit preview_layout_changed();
+        return {};
+    });
+    connect(dialog,&QDialog::finished,this,[this](int) {
+        preview_layout_dialog_.clear(); emit preview_layout_dialog_visibility_changed(false);
+    });
+    // layer-shell 截图层既在普通窗口上方又独占键盘，普通模态窗会被遮挡并锁住原截图。
+    // 同表面子面板不创建原生窗口/Qt 模态关系，Esc、焦点与取消均留在截图表面处理。
+    // The keyboard-exclusive capture layer covers ordinary modal windows and blocks their owner.
+    // Embed the editor on that same surface, keeping Escape and focus local without Qt modality.
+    dialog->show_in_capture_overlay(host_window());
+#else
     // "Adjust": edit the layout, then save and rearrange at once.
     hide_more_popup();
     auto *host = host_window();
@@ -407,7 +542,14 @@ void Toolbar::open_layout_dialog() {
     reload_layout();
     // The width changed; re-anchor (positions moved by hand stay).
     reposition_self();
+#endif
 }
+
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+void Toolbar::cancel_preview_layout_dialog() {
+    if (preview_layout_dialog_) preview_layout_dialog_->reject();
+}
+#endif
 
 QWidget *Toolbar::ensure_panel_for_tool(const QString &tool_id) {
     QString kind;
@@ -848,8 +990,10 @@ void Toolbar::set_manual_positioned(bool manual) {
 
 void Toolbar::reset_auto_position() {
     set_manual_positioned(false);
+#ifndef JIETUBA_LINUX_UI_PREVIEW
     // The capture toolbar repositions through update_toolbar_position.
     if (auto *host = dynamic_cast<CanvasHost *>(parentWidget())) host->update_toolbar_position();
+#endif
 }
 
 bool Toolbar::eventFilter(QObject *watched, QEvent *event) {
@@ -858,6 +1002,7 @@ bool Toolbar::eventFilter(QObject *watched, QEvent *event) {
         on_more_hover(event->type() == QEvent::Enter);
         return false;
     }
+#ifndef JIETUBA_LINUX_UI_PREVIEW
     if (drag_handle && watched == drag_handle) {
         const auto type = event->type();
         if (type == QEvent::MouseButtonDblClick) return false;
@@ -885,12 +1030,15 @@ bool Toolbar::eventFilter(QObject *watched, QEvent *event) {
             return true;
         }
     }
+#endif
     return QWidget::eventFilter(watched, event);
 }
 
 void Toolbar::moveEvent(QMoveEvent *event) {
     QWidget::moveEvent(event);
+#ifndef JIETUBA_LINUX_UI_PREVIEW
     sync_all_panels_position();
+#endif
 }
 
 void Toolbar::hideEvent(QHideEvent *event) {
@@ -916,6 +1064,24 @@ void Toolbar::show_number_extras(const std::optional<QVariantMap> &state) {
 
 void Toolbar::sync_panel_position(QWidget *panel, bool align_right) {
     if (!panel) return;
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 预览中的更多菜单是同一窗口的子控件，使用宿主坐标定位。
+    // Position the preview More popup in host-local coordinates under Wayland.
+    if (auto *host = parentWidget()) {
+        const QPoint origin = mapTo(host, QPoint(0, 0));
+        const int gap = scaled(5);
+        const int below = origin.y() + height() + gap;
+        const int above = origin.y() - panel->height() - gap;
+        int y = toolbar_below_selection_ ? below : above;
+        const int other = toolbar_below_selection_ ? above : below;
+        if (y < 0 || y + panel->height() > host->height()) y = other;
+        y = std::clamp(y, 0, std::max(0, host->height() - panel->height()));
+        int x = origin.x() + (align_right ? width() - panel->width() : 0);
+        x = std::clamp(x, 0, std::max(0, host->width() - panel->width()));
+        panel->move(x, y);
+        return;
+    }
+#endif
     const auto toolbar_global_pos = mapToGlobal(QPoint(0, 0));
     const int gap = scaled(5);
     const int panel_h = panel->height();

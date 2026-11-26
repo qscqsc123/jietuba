@@ -1,6 +1,5 @@
 #include "core/i18n.h"
 #include "core/logger.h"
-#include <QApplication>
 #include <QDir>
 #include <QFile>
 #include <QLocale>

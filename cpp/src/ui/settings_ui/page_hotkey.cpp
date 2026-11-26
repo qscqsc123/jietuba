@@ -10,6 +10,7 @@
 #include "ui/hotkey_edit.h"
 #include "ui/inapp_key_edit.h"
 #include "ui/key_chip.h"
+#include "ui/shortcut_section.h"
 #include "ui/settings_ui/components.h"
 #include "ui/settings_ui/dialog.h"
 #include "ui/settings_ui/pages.h"
@@ -406,7 +407,7 @@ QWidget *create_hotkey_page(SettingsDialog *dialog) {
     layout->setSpacing(dialog_scaled(12));
 
     // ════ Global hotkeys ════
-    auto *grp_global = new SectionCard(ResourceManager::get_icon_path(QString::fromUtf8("热键.svg")), dialog->tr_text("Global Hotkeys"), dialog->tr_text("Works anytime"), view);
+    auto *grp_global = new ShortcutSection(ResourceManager::get_icon_path(QString::fromUtf8("热键.svg")), dialog->tr_text("Global Hotkeys"), dialog->tr_text("Works anytime"), view);
     for (const auto &row : GLOBAL_HOTKEY_ROWS()) {
         auto values = dialog->config_manager->get_global_hotkeys(row.function);
         if (row.function == "screenshot") values[0] = dialog->current_hotkey;
@@ -433,7 +434,7 @@ QWidget *create_hotkey_page(SettingsDialog *dialog) {
     layout->addWidget(grp_global);
 
     // ════ In-app shortcuts ════
-    auto *grp_inapp = new SectionCard(FluentIcon::Layout, dialog->tr_text("In-App Shortcuts"), dialog->tr_text("Only in screenshot, pin and clipboard windows"), view);
+    auto *grp_inapp = new ShortcutSection(FluentIcon::Layout, dialog->tr_text("In-App Shortcuts"), dialog->tr_text("Only in screenshot, pin and clipboard windows"), view);
     dialog->inapp_edits.clear();
     dialog->inapp_groups.clear();
 

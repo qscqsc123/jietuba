@@ -183,6 +183,16 @@ WatermarkStylePopup::WatermarkStylePopup(QWidget *parent) : HoverPopup(parent) {
 void WatermarkStylePopup::apply_scale() {
     extra_qss_ = controls_qss();
     HoverPopup::apply_scale();
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 面板固定绘制浅色背景，显式覆盖深色桌面的控件调色板和样式。
+    // The popup always paints a light background, so do not inherit dark desktop controls.
+    const QString local_controls = controls_qss();
+    for (auto *label : labels_) label->setStyleSheet(local_controls);
+    for (auto *value : values_) value->setStyleSheet(local_controls);
+    for (auto *slider : sliders_) slider->setStyleSheet(local_controls);
+    if (line_label_) line_label_->setStyleSheet(local_controls);
+    for (auto *button : line_buttons_) button->setStyleSheet(local_controls);
+#endif
     auto *layout = this->layout();
     if (!layout) return;
     const int margin = scaled(12);
@@ -209,8 +219,8 @@ QString WatermarkStylePopup::controls_qss() {
         QPushButton#GridLineButton:disabled { color: rgba(42, 50, 67, 0.4); }
         QPushButton#GridLineButton:checked:disabled { background: %9; color: rgba(42, 50, 67, 0.4); }
         )")
-        .arg(CONTROL_FILL.name(QColor::HexArgb)).arg(ink).arg(scaled(6)).arg(scaled(3)).arg(scaled(6)).arg(scaled(12))
-        .arg(CONTROL_FILL_HOVER.name(QColor::HexArgb)).arg(accent).arg(groove);
+        .arg(QStringLiteral("rgba(15, 23, 42, 15)")).arg(ink).arg(scaled(6)).arg(scaled(3)).arg(scaled(6)).arg(scaled(12))
+        .arg(QStringLiteral("rgba(15, 23, 42, 26)")).arg(accent).arg(groove);
     return QString(R"(
         QLabel { color: %1; background: transparent; font-size: %2px; }
         QSlider { background: transparent; min-height: %3px; }
@@ -335,7 +345,13 @@ void WatermarkSettingsPanel::fit_layout_combo() {
     int longest = 0;
     for (int i = 0; i < layout_combo->count(); ++i) longest = std::max(longest, metrics.horizontalAdvance(layout_combo->itemText(i)));
     const int chrome = scaled(PillComboBox::BASE_PADDING_LEFT + PillComboBox::BASE_ARROW_COLUMN + 6);
-    layout_combo->setFixedWidth(std::max(scaled(BASE_LAYOUT_COMBO_MIN_WIDTH), longest + chrome));
+    const int width = std::max(scaled(BASE_LAYOUT_COMBO_MIN_WIDTH), longest + chrome);
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // Qt 样式表会在控件 polish 时覆盖固定宽度；同时设置样式宽度以免文字被裁掉。
+    // Qt stylesheet polishing can override fixed widths, so keep its width in sync.
+    layout_combo->setStyleSheet(QStringLiteral("QComboBox { min-width: %1px; max-width: %1px; }").arg(width));
+#endif
+    layout_combo->setFixedWidth(width);
 }
 
 void WatermarkSettingsPanel::fill_fonts() {

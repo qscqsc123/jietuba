@@ -747,7 +747,7 @@ private slots:
         dialog.insert_time();
         QCOMPARE(dialog.edit->toPlainText(), QString("ACME$yyyy-MM-dd HH:mm:ss$  "));
         QCOMPARE(dialog.time_button->text(), time_format_short_name("yyyy-MM-dd HH:mm:ss"));
-        // Picking from the menu inserts that format and makes it the button's format.
+        // Picking from the menu replaces the existing token and updates the button's format.
         dialog.edit->moveCursor(QTextCursor::End);
         bool picked = false;
         QTimer::singleShot(0, &dialog, [&] {
@@ -763,7 +763,7 @@ private slots:
         // The menu's own loop runs until a format is picked.
         dialog.time_button->showMenu();
         QVERIFY(picked);
-        QVERIFY(dialog.edit->toPlainText().endsWith(time_token("yyyyMMddHHmmss")));
+        QCOMPARE(dialog.edit->toPlainText(), QString("ACME$yyyyMMddHHmmss$  "));
         QCOMPARE(dialog.time_format(), QString("yyyyMMddHHmmss"));
         QCOMPARE(dialog.time_menu->actions().size(), static_cast<qsizetype>(watermark_time_formats().size()));
         // Leading and trailing blanks go; the preview shows the expanded text.

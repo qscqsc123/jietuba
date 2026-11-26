@@ -41,6 +41,9 @@ QIcon tinted_from_path(const QString &path, const QString &color) {
     const auto pixmap = source.pixmap(64, 64);
     if (pixmap.isNull()) return source;
     QPixmap tinted(pixmap.size());
+    // 着色缓冲必须保留源 DPR，否则高 DPI 图标会缩在左上角，只剩一半逻辑尺寸。
+    // Preserve source DPR: losing it paints HiDPI content into only a fraction of the logical icon box.
+    tinted.setDevicePixelRatio(pixmap.devicePixelRatio());
     tinted.fill(Qt::transparent);
     QPainter painter(&tinted);
     painter.drawPixmap(0, 0, pixmap);

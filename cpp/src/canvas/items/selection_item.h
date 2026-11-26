@@ -44,6 +44,9 @@ public:
     // skip_corners for the rounded-corner preview, where corner handles cannot follow the arc.
     void draw_handles(QPainter *painter, const QRectF &rect, bool skip_corners = false);
     void update_bounds();
+    // Linux 视图在开始新选区之前先命中原版选区控制点，避免拦截边框的鼠标事件。
+    // Let the Linux view hit-test the shared crop before starting a new selection gesture.
+    int hit_test(const QPointF &pos) const;
     int active_handle = HANDLE_NONE;
     QPointF start_pos;
     QRectF start_rect;
@@ -54,7 +57,6 @@ protected:
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
 private:
     static QMap<int, QPointF> handle_positions(const QRectF &rect);
-    int hit_test(const QPointF &pos) const;
     bool should_delegate_to_text(const QPointF &scene_pos) const;
     SelectionModel *model_;
     QMetaObject::Connection rect_connection_;

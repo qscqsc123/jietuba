@@ -571,6 +571,27 @@ QFrame *make_separator() {
 
 QPoint popup_position(QWidget *panel, QWidget *anchor, QWidget *popup) {
     const int gap = scaled(4);
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // Wayland 不保证客户端能定位顶层窗口。预览弹出框是宿主的子控件，
+    // 因此在宿主坐标中定位，并限制在宿主可见范围内。
+    // Wayland does not guarantee top-level positioning. Place preview popups
+    // as host children using host-local coordinates and clamp to the host.
+    auto *host = popup->parentWidget();
+    const QRect area = host->rect();
+    const QRect panel_rect(panel->mapTo(host, QPoint(0, 0)), panel->size());
+    const QPoint anchor_top_left = anchor->mapTo(host, QPoint(0, 0));
+    bool below_toolbar = true;
+    if (auto *toolbar = panel->property("owner_toolbar").value<QWidget *>())
+        below_toolbar = panel_rect.top() >= toolbar->mapTo(host, QPoint(0, 0)).y();
+    const int outward = below_toolbar ? panel_rect.bottom() + gap : panel_rect.top() - popup->height() - gap;
+    const int other = below_toolbar ? panel_rect.top() - popup->height() - gap : panel_rect.bottom() + gap;
+    int y = outward;
+    if (y < area.top() || y + popup->height() > area.bottom() + 1) y = other;
+    int x = anchor_top_left.x() + anchor->width() / 2 - popup->width() / 2;
+    x = std::clamp(x, area.left(), std::max(area.left(), area.right() + 1 - popup->width()));
+    y = std::clamp(y, area.top(), std::max(area.top(), area.bottom() + 1 - popup->height()));
+    return QPoint(x, y);
+#else
     const QRect panel_rect(panel->mapToGlobal(QPoint(0, 0)), panel->size());
     const auto anchor_top_left = anchor->mapToGlobal(QPoint(0, 0));
     auto *screen = QApplication::screenAt(anchor_top_left);
@@ -587,25 +608,39 @@ QPoint popup_position(QWidget *panel, QWidget *anchor, QWidget *popup) {
     x = std::max(area.left(), std::min(x, area.right() - popup->width()));
     y = std::max(area.top(), std::min(y, area.bottom() - popup->height()));
     return QPoint(x, y);
+#endif
 }
 
-HoverPopup::HoverPopup(QWidget *parent) : QWidget(parent) {
+HoverPopup::HoverPopup(QWidget *parent) : QWidget(parent), owner_panel_(parent) {
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 同一窗口内的子控件可以可靠定位，也不会受到 Wayland 顶层窗口策略影响。
+    // A child of the same window can be positioned reliably under Wayland.
+    if (parent) setParent(parent->window());
+    setWindowFlags(Qt::Widget);
+#else
     // The panel's flags: on top and never taking focus, or the panel would close.
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
     setAttribute(Qt::WA_ShowWithoutActivating);
+#endif
     setAttribute(Qt::WA_TranslucentBackground, true);
     setFocusPolicy(Qt::NoFocus);
     setObjectName("HoverPopup");
     HoverPopup::apply_scale();
     close_timer_.setSingleShot(true);
     close_timer_.setInterval(CLOSE_DELAY_MS);
-    connect(&close_timer_, &QTimer::timeout, this, &QWidget::hide);
+    connect(&close_timer_, &QTimer::timeout, this, [this] {
+        // 按住滑块时保留弹出框，即使拖动过程中鼠标暂时移出其边界。
+        // Keep the popup alive while a slider is held, even if the pointer leaves it.
+        for (auto *slider : findChildren<QAbstractSlider *>())
+            if (slider->isSliderDown()) { close_timer_.start(); return; }
+        hide();
+    });
     if (parent) parent->installEventFilter(this);
 }
 
 bool HoverPopup::eventFilter(QObject *watched, QEvent *event) {
     // A separate top-level does not hide with its panel; left behind it would be a white box over the capture.
-    if (watched == parentWidget() && event->type() == QEvent::Hide) hide();
+    if (watched == owner_panel_ && event->type() == QEvent::Hide) hide();
     return QWidget::eventFilter(watched, event);
 }
 

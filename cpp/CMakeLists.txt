@@ -14,6 +14,425 @@ endif()
 # The repository root holds the version number, the Rust libraries, the icons and svg/.
 get_filename_component(JIETUBA_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/.. ABSOLUTE)
 
+# Linux 预览只构建已经移植的原版界面与画布，暂不引入 Windows 服务。
+# The Linux preview builds ported original UI and canvas components without Windows services.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+    enable_language(C)
+    # 屏幕授权使用 QtDBus，视频帧由 PipeWire 的 GStreamer 插件接收。
+    # QtDBus handles portal authorization; GStreamer receives PipeWire frames.
+    find_package(Qt6 REQUIRED COMPONENTS DBus Concurrent Network Multimedia)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GSTREAMER REQUIRED IMPORTED_TARGET gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0)
+    pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
+    # X11 支持（用于 Xorg 桌面环境）
+    # X11 support for Xorg-based desktop environments
+    find_package(X11)
+    if(X11_FOUND)
+        find_package(X11 COMPONENTS Xfixes Xrandr)
+    endif()
+    # OCR 引擎可选；缺失时仍能编译，用户点击识别会看到安装提示。
+    # Tesseract is optional at build time; without it OCR reports the missing component.
+    pkg_check_modules(ATSPI QUIET IMPORTED_TARGET atspi-2 gobject-2.0)
+    if(TARGET PkgConfig::ATSPI)
+        add_executable(jietuba-smart-element linux/smart_element_probe.cpp)
+        target_link_libraries(jietuba-smart-element PRIVATE PkgConfig::ATSPI)
+        install(TARGETS jietuba-smart-element RUNTIME DESTINATION bin)
+    endif()
+    pkg_check_modules(TESSERACT QUIET IMPORTED_TARGET tesseract)
+    pkg_check_modules(SPEECHD QUIET speech-dispatcher>=0.10.2)
+    # ZXing 使用发行版提供的 CMake 包；缺失时保留扫码按钮的安装提示。
+    # Prefer a distro-provided ZXing CMake package; the UI reports a missing decoder otherwise.
+    find_package(ZXing QUIET)
+    find_program(CARGO_EXECUTABLE cargo REQUIRED)
+    find_package(Threads REQUIRED)
+    # 可选的 layer-shell 支持：用于定位贴图，未安装时仍可构建。
+    # Optional layer-shell support for positioned pins; the normal Wayland fallback still builds.
+    find_package(LayerShellQt QUIET)
+    find_package(Qt6 QUIET COMPONENTS TextToSpeech)
+    # 智能擦除只构建独立 Rust 算法和 C ABI，不引入 Windows native 的其他依赖。
+    # Build the standalone smart-erase Rust bridge without Windows native modules.
+    set(JIETUBA_SMART_ERASE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/linux/native_smart_erase)
+    set(JIETUBA_SMART_ERASE_TARGET ${CMAKE_CURRENT_BINARY_DIR}/smart-erase-rust)
+    set(JIETUBA_SMART_ERASE_LIB ${JIETUBA_SMART_ERASE_TARGET}/release/libjietuba_linux_smart_erase.a)
+    file(GLOB_RECURSE JIETUBA_SMART_ERASE_SOURCES CONFIGURE_DEPENDS
+        ${JIETUBA_REPO_ROOT}/rust_libs/smart_erase/src/*.rs ${JIETUBA_SMART_ERASE_DIR}/src/*.rs)
+    add_custom_command(OUTPUT ${JIETUBA_SMART_ERASE_LIB}
+        COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${JIETUBA_SMART_ERASE_TARGET}
+            ${CARGO_EXECUTABLE} build --offline --locked --release --manifest-path ${JIETUBA_SMART_ERASE_DIR}/Cargo.toml
+        DEPENDS ${JIETUBA_SMART_ERASE_SOURCES} ${JIETUBA_SMART_ERASE_DIR}/Cargo.toml ${JIETUBA_SMART_ERASE_DIR}/Cargo.lock
+            ${JIETUBA_REPO_ROOT}/rust_libs/smart_erase/Cargo.toml ${CMAKE_CURRENT_SOURCE_DIR}/native/src/smart_erase.rs
+        VERBATIM)
+    add_custom_target(jietuba_linux_smart_erase_build DEPENDS ${JIETUBA_SMART_ERASE_LIB})
+    add_library(jietuba_linux_smart_erase STATIC IMPORTED GLOBAL)
+    set_target_properties(jietuba_linux_smart_erase PROPERTIES IMPORTED_LOCATION ${JIETUBA_SMART_ERASE_LIB})
+    find_program(WAYLAND_SCANNER wayland-scanner REQUIRED)
+    set(JIETUBA_WAYLAND_GENERATED ${CMAKE_CURRENT_BINARY_DIR}/wayland-generated)
+    file(MAKE_DIRECTORY ${JIETUBA_WAYLAND_GENERATED})
+    set(JIETUBA_WAYLAND_PROTOCOLS ext-image-copy-capture-v1 ext-image-capture-source-v1 ext-foreign-toplevel-list-v1 wlr-screencopy-unstable-v1)
+    foreach(protocol IN LISTS JIETUBA_WAYLAND_PROTOCOLS)
+        set(xml ${CMAKE_CURRENT_SOURCE_DIR}/linux/protocols/${protocol}.xml)
+        add_custom_command(OUTPUT ${JIETUBA_WAYLAND_GENERATED}/${protocol}-client.h
+            COMMAND ${WAYLAND_SCANNER} client-header ${xml} ${JIETUBA_WAYLAND_GENERATED}/${protocol}-client.h
+            DEPENDS ${xml} VERBATIM)
+        add_custom_command(OUTPUT ${JIETUBA_WAYLAND_GENERATED}/${protocol}-protocol.c
+            COMMAND ${WAYLAND_SCANNER} private-code ${xml} ${JIETUBA_WAYLAND_GENERATED}/${protocol}-protocol.c
+            DEPENDS ${xml} VERBATIM)
+        list(APPEND JIETUBA_WAYLAND_SOURCES ${JIETUBA_WAYLAND_GENERATED}/${protocol}-client.h ${JIETUBA_WAYLAND_GENERATED}/${protocol}-protocol.c)
+    endforeach()
+    qt_add_executable(jietuba_linux_ui_preview
+        linux/ui_preview.cpp
+        linux/region_selector.cpp linux/region_selector.h
+        linux/linux_settings.cpp linux/linux_settings.h linux/settings_window.cpp linux/settings_window.h
+        linux/autostart.cpp linux/autostart.h
+        src/core/i18n.cpp src/core/i18n.h
+        src/settings/settings_schema.cpp src/settings/settings_transfer.cpp
+        linux/shortcuts_page.cpp linux/shortcuts_page.h
+        linux/screen_annotation.cpp linux/screen_annotation.h
+        linux/kwin_pointer_tracker.cpp linux/kwin_pointer_tracker.h
+        src/core/save.cpp src/core/file_names.cpp
+        linux/quick_translation_window.cpp linux/quick_translation_window.h
+        linux/speech_dispatcher.cpp linux/speech_dispatcher.h
+        linux/pointer_locator.cpp linux/pointer_locator.h
+        linux/shortcut_edit.cpp linux/shortcut_edit.h
+        src/ui/key_chip.cpp src/ui/key_chip.h src/ui/inapp_key_edit.cpp src/ui/inapp_key_edit.h
+        src/ui/shortcut_section.cpp src/ui/shortcut_section.h src/ui/fluent_lite/segmented.cpp src/ui/fluent_lite/segmented.h
+        linux/pin_window.cpp linux/pin_window.h
+        # 贴图复用原版按钮与 PIN 工具栏布局；Wayland 宿主负责定位和输入区域。
+        # Share original pin controls/PIN toolbar layout; adapt positioning and input regions for Wayland.
+        linux/pin_toolbar.cpp linux/pin_toolbar.h src/pin/pin_controls.cpp src/pin/pin_controls.h
+        # GIF 复用原版视觉组件；Linux 采集与磁盘帧仓库独立实现。
+        # Share GIF visuals; keep Linux capture and disk-backed storage independent.
+        src/gif/_widgets.cpp src/gif/_widgets.h
+        src/gif/video_settings_panel.cpp src/gif/video_settings_panel.h
+        linux/recording_audio.cpp linux/recording_audio.h
+        linux/gif_frames.cpp linux/gif_frames.h
+        linux/gif_capture_window.cpp linux/gif_capture_window.h
+        linux/recording_result_preview.cpp linux/recording_result_preview.h
+        src/ui/wait_bar.cpp src/ui/wait_bar.h
+        src/gif/range_slider.cpp src/gif/range_slider.h
+        linux/file_manager.cpp linux/file_manager.h
+        src/stitch/scroll_toolbar.cpp src/stitch/scroll_toolbar.h
+        linux/scroll_capture_overlay.cpp linux/scroll_capture_overlay.h
+        linux/scroll_capture_window.cpp linux/scroll_capture_window.h
+        linux/scroll_auto_input.cpp linux/scroll_auto_input.h
+        linux/scroll_stitch.cpp linux/scroll_stitch.h
+        linux/tesseract_ocr.cpp linux/tesseract_ocr.h
+        linux/ppocr_wrapper.cpp linux/ppocr_wrapper.h
+        linux/ocr_result_window.cpp linux/ocr_result_window.h
+        linux/barcode_result_window.cpp linux/barcode_result_window.h
+        linux/translation_client.cpp linux/translation_client.h
+        linux/translation_result_window.cpp linux/translation_result_window.h
+        linux/global_shortcut.cpp linux/global_shortcut.h
+        linux/capture/capture_backend.h linux/capture/kwin_capture.cpp linux/capture/kwin_capture.h
+        linux/capture/protocol_capture.cpp linux/capture/protocol_capture.h
+        linux/capture/x11_capture.cpp linux/capture/x11_capture.h
+        ${JIETUBA_WAYLAND_SOURCES}
+        linux/capture/capture_router.cpp linux/capture/capture_router.h
+        linux/wayland_capture.cpp linux/wayland_capture.h linux/frame_conversion.cpp linux/frame_conversion.h
+        linux/preview_log.cpp
+        linux/preview_support.cpp
+        linux/shortcut_bindings.cpp linux/shortcut_bindings.h
+        src/ui/magnifier.cpp src/ui/magnifier.h src/settings/color_formats.cpp
+        src/canvas/selection_model.cpp
+        src/canvas/selection_model.h
+        src/canvas/scene.cpp src/canvas/scene.h
+        src/canvas/undo.cpp
+        src/canvas/handle_editor.cpp
+        src/canvas/items/mosaic_item.cpp
+        src/canvas/items/spotlight_item.cpp src/canvas/items/spotlight_item.h
+        src/canvas/items/watermark_item.cpp src/canvas/items/watermark_item.h
+        src/canvas/items/smart_erase_fill.cpp src/canvas/items/smart_erase_fill.h
+        src/canvas/smart_erase.cpp
+        src/canvas/items/background_item.cpp
+        src/canvas/items/drawing_items.cpp
+        src/canvas/items/arrow_item.cpp
+        src/canvas/items/stroke_item.cpp
+        src/canvas/items/text_item.cpp
+        src/tools/base.cpp src/tools/controller.cpp
+        src/tools/pen.cpp src/tools/rect.cpp src/tools/ellipse.cpp src/tools/arrow.cpp src/tools/text.cpp src/tools/mosaic.cpp src/tools/eraser.cpp src/tools/number.cpp src/tools/highlighter.cpp src/tools/spotlight.cpp src/tools/watermark.cpp
+        src/core/export.cpp
+        src/core/html_unescape.cpp src/core/html_unescape.h
+        src/canvas/items/selection_item.cpp
+        src/core/theme.cpp
+        src/core/constants.cpp
+        src/core/resource_manager.cpp
+        src/ui/fluent_lite/icons.cpp
+        src/ui/base_settings_panel.cpp
+        src/ui/paint_settings_panel.cpp
+        src/ui/shape_settings_panel.cpp
+        src/ui/arrow_settings_panel.cpp
+        src/ui/text_settings_panel.cpp
+        src/ui/mosaic_settings_panel.cpp src/ui/mosaic_settings_panel.h
+        src/ui/number_settings_panel.cpp src/ui/number_settings_panel.h
+        src/ui/watermark_settings_panel.cpp src/ui/watermark_settings_panel.h src/ui/watermark_input_dialog.cpp src/ui/watermark_input_dialog.h
+        src/ui/color_picker_button.cpp
+        src/core/ui_theme.cpp src/core/ui_theme.h
+        src/core/qt_utils.cpp
+        src/ui/fluent_lite/cards.cpp src/ui/fluent_lite/cards.h
+        src/ui/fluent_lite/navigation.cpp src/ui/fluent_lite/navigation.h
+        src/ui/fluent_lite/labels.cpp src/ui/fluent_lite/labels.h
+        src/ui/fluent_lite/switch.cpp src/ui/fluent_lite/switch.h
+        src/ui/fluent_lite/buttons.cpp src/ui/fluent_lite/buttons.h
+        src/ui/fluent_lite/inputs.cpp src/ui/fluent_lite/inputs.h
+        src/ui/fluent_lite/text_context_menu.cpp
+        src/ui/fluent_lite/theme.cpp
+        src/ui/toolbar.cpp src/ui/toolbar.h
+        src/ui/toolbar_layout.cpp
+        # 调整按钮复用 Windows 排序/显示模式窗口，不另建 Linux 外观。
+        # Share the original toolbar customization dialog and reorderable rows.
+        src/ui/toolbar_layout_dialog.cpp src/ui/toolbar_layout_dialog.h
+        src/ui/reorderable_rows.cpp src/ui/reorderable_rows.h)
+    if(TARGET jietuba-smart-element)
+        add_dependencies(jietuba_linux_ui_preview jietuba-smart-element)
+    endif()
+    target_compile_definitions(jietuba_linux_ui_preview PRIVATE JIETUBA_LINUX_UI_PREVIEW)
+    file(GLOB_RECURSE JIETUBA_PREVIEW_ICONS CONFIGURE_DEPENDS ${JIETUBA_REPO_ROOT}/svg/*.svg)
+    qt_add_resources(jietuba_linux_ui_preview "icons" PREFIX "/" BASE ${JIETUBA_REPO_ROOT} FILES ${JIETUBA_PREVIEW_ICONS})
+    file(GLOB JIETUBA_LINUX_QM_FILES CONFIGURE_DEPENDS resources/translations/app_*.qm)
+    qt_add_resources(jietuba_linux_ui_preview "translations" PREFIX "/translations" BASE resources/translations
+        FILES ${JIETUBA_LINUX_QM_FILES})
+    target_include_directories(jietuba_linux_ui_preview PRIVATE src ${JIETUBA_WAYLAND_GENERATED})
+    add_dependencies(jietuba_linux_ui_preview jietuba_linux_smart_erase_build)
+    if(SPEECHD_FOUND)
+        # 仅使用头文件，运行时动态加载 libspeechd，缺少可选语音库不影响程序启动。
+        # Headers only: runtime loading keeps speech optional for distributed binaries.
+        target_include_directories(jietuba_linux_ui_preview PRIVATE ${SPEECHD_INCLUDE_DIRS})
+        target_compile_definitions(jietuba_linux_ui_preview PRIVATE JIETUBA_HAS_SPEECH_DISPATCHER)
+    endif()
+    if(TARGET Qt6::TextToSpeech)
+        target_link_libraries(jietuba_linux_ui_preview PRIVATE Qt6::TextToSpeech)
+        target_compile_definitions(jietuba_linux_ui_preview PRIVATE JIETUBA_HAS_TEXT_TO_SPEECH)
+    endif()
+    if(TARGET LayerShellQt::Interface)
+        target_link_libraries(jietuba_linux_ui_preview PRIVATE LayerShellQt::Interface)
+        target_compile_definitions(jietuba_linux_ui_preview PRIVATE JIETUBA_HAS_LAYER_SHELL)
+    endif()
+    if(TARGET PkgConfig::TESSERACT)
+        target_link_libraries(jietuba_linux_ui_preview PRIVATE PkgConfig::TESSERACT)
+        target_compile_definitions(jietuba_linux_ui_preview PRIVATE JIETUBA_HAS_TESSERACT)
+    endif()
+    if(TARGET ZXing::ZXing)
+        target_sources(jietuba_linux_ui_preview PRIVATE src/barcode/reader.cpp src/barcode/reader.h)
+        target_link_libraries(jietuba_linux_ui_preview PRIVATE ZXing::ZXing)
+        target_compile_definitions(jietuba_linux_ui_preview PRIVATE JIETUBA_HAS_ZXING)
+    endif()
+    target_link_libraries(jietuba_linux_ui_preview PRIVATE Qt6::Widgets Qt6::Svg Qt6::DBus Qt6::Concurrent Qt6::Network Qt6::Multimedia PkgConfig::GSTREAMER PkgConfig::WAYLAND_CLIENT jietuba_linux_smart_erase Threads::Threads ${CMAKE_DL_LIBS})
+    # X11 支持（用于 Xorg 桌面环境）
+    if(X11_FOUND)
+        target_link_libraries(jietuba_linux_ui_preview PRIVATE ${X11_LIBRARIES})
+        target_include_directories(jietuba_linux_ui_preview PRIVATE ${X11_INCLUDE_DIR})
+        target_compile_definitions(jietuba_linux_ui_preview PRIVATE JIETUBA_HAS_X11)
+        if(X11_Xfixes_FOUND)
+            target_link_libraries(jietuba_linux_ui_preview PRIVATE ${X11_Xfixes_LIB})
+            target_compile_definitions(jietuba_linux_ui_preview PRIVATE JIETUBA_HAS_XFIXES)
+        endif()
+        if(X11_Xrandr_FOUND)
+            target_link_libraries(jietuba_linux_ui_preview PRIVATE ${X11_Xrandr_LIB})
+        endif()
+    endif()
+    # 丢弃预览未使用的 Windows 设置相关函数。
+    # Omit platform-dependent settings functions that the preview does not use.
+    target_compile_options(jietuba_linux_ui_preview PRIVATE -ffunction-sections -fdata-sections)
+    target_link_options(jietuba_linux_ui_preview PRIVATE -Wl,--gc-sections)
+    # 可选的隔离 portal 测试使用独立 D-Bus，不访问用户桌面。
+    # Optional portal tests run on a private D-Bus without accessing the desktop.
+    option(JIETUBA_LINUX_CAPTURE_TESTS "Build Linux ScreenCast portal tests" OFF)
+    if(JIETUBA_LINUX_CAPTURE_TESTS)
+        enable_testing()
+        find_program(JIETUBA_DBUS_RUN_SESSION dbus-run-session REQUIRED)
+        foreach(test_name portal_cancel_test portal_protocol_test)
+            qt_add_executable(${test_name} linux/tests/${test_name}.cpp linux/wayland_capture.cpp linux/wayland_capture.h linux/frame_conversion.cpp)
+            target_include_directories(${test_name} PRIVATE linux)
+            target_link_libraries(${test_name} PRIVATE Qt6::Gui Qt6::DBus PkgConfig::GSTREAMER)
+            add_test(NAME ${test_name} COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:${test_name}>)
+            set_tests_properties(${test_name} PROPERTIES TIMEOUT 10)
+        endforeach()
+        qt_add_executable(frame_conversion_test linux/tests/frame_conversion_test.cpp linux/frame_conversion.cpp)
+        target_include_directories(frame_conversion_test PRIVATE linux)
+        target_link_libraries(frame_conversion_test PRIVATE Qt6::Gui PkgConfig::GSTREAMER)
+        add_test(NAME frame_conversion_test COMMAND frame_conversion_test)
+        # 同时验证路由器传递贴图过滤策略，模拟服务运行在私有 D-Bus 中。
+        # Test caller-window policy through the router on a private mock D-Bus service.
+        qt_add_executable(kwin_capture_test linux/tests/kwin_capture_test.cpp linux/capture/kwin_capture.cpp
+            linux/capture/capture_router.cpp linux/capture/protocol_capture.cpp ${JIETUBA_WAYLAND_SOURCES})
+        target_include_directories(kwin_capture_test PRIVATE linux ${JIETUBA_WAYLAND_GENERATED})
+        target_link_libraries(kwin_capture_test PRIVATE Qt6::Gui Qt6::DBus Qt6::Concurrent PkgConfig::WAYLAND_CLIENT)
+        target_sources(kwin_capture_test PRIVATE linux/wayland_capture.cpp linux/wayland_capture.h linux/frame_conversion.cpp)
+        target_link_libraries(kwin_capture_test PRIVATE PkgConfig::GSTREAMER)
+        get_target_property(JIETUBA_ROUTER_TEST_SOURCES kwin_capture_test SOURCES)
+        list(REMOVE_ITEM JIETUBA_ROUTER_TEST_SOURCES linux/tests/kwin_capture_test.cpp)
+        qt_add_executable(portal_router_fallback_test linux/tests/portal_protocol_test.cpp ${JIETUBA_ROUTER_TEST_SOURCES})
+        target_compile_definitions(portal_router_fallback_test PRIVATE JIETUBA_TEST_ROUTER)
+        target_include_directories(portal_router_fallback_test PRIVATE linux ${JIETUBA_WAYLAND_GENERATED})
+        target_link_libraries(portal_router_fallback_test PRIVATE Qt6::Gui Qt6::DBus Qt6::Concurrent PkgConfig::WAYLAND_CLIENT PkgConfig::GSTREAMER)
+        add_test(NAME portal_router_fallback_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:portal_router_fallback_test>)
+        set_tests_properties(portal_router_fallback_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 10)
+        add_test(NAME kwin_capture_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:kwin_capture_test>)
+        add_test(NAME kwin_area_fallback_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:kwin_capture_test> --no-area)
+        add_test(NAME kwin_area_denied_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:kwin_capture_test> --area-denied)
+        set_tests_properties(kwin_capture_test kwin_area_fallback_test kwin_area_denied_test PROPERTIES TIMEOUT 12)
+        qt_add_executable(global_shortcut_test linux/tests/global_shortcut_test.cpp linux/global_shortcut.cpp linux/global_shortcut.h)
+        target_include_directories(global_shortcut_test PRIVATE linux)
+        target_link_libraries(global_shortcut_test PRIVATE Qt6::Core Qt6::Gui Qt6::DBus)
+        add_test(NAME global_shortcut_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:global_shortcut_test>)
+        add_test(NAME global_shortcut_edit_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:global_shortcut_test> --edit)
+        add_test(NAME global_shortcut_portable_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:global_shortcut_test> --portable)
+        add_test(NAME global_shortcut_mixed_desktop_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:global_shortcut_test> --portable-kde)
+        add_test(NAME global_shortcut_portable_denied_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:global_shortcut_test> --portable-denied)
+        add_test(NAME global_shortcut_unbound_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:global_shortcut_test> --empty)
+        add_test(NAME global_shortcut_unsupported_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:global_shortcut_test> --no-config)
+        set_tests_properties(global_shortcut_test global_shortcut_edit_test global_shortcut_portable_test global_shortcut_mixed_desktop_test global_shortcut_portable_denied_test global_shortcut_unbound_test global_shortcut_unsupported_test PROPERTIES TIMEOUT 8)
+        # 输入测试运行于私有 D-Bus，永不向用户桌面注入事件。
+        # Fake input portal tests never move the real desktop pointer.
+        qt_add_executable(scroll_auto_input_test linux/tests/scroll_auto_input_test.cpp linux/scroll_auto_input.cpp linux/scroll_auto_input.h)
+        target_include_directories(scroll_auto_input_test PRIVATE linux)
+        target_link_libraries(scroll_auto_input_test PRIVATE Qt6::Gui Qt6::DBus)
+        add_test(NAME scroll_auto_input_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:scroll_auto_input_test>)
+        set_tests_properties(scroll_auto_input_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 8)
+        qt_add_executable(linux_settings_test linux/tests/linux_settings_test.cpp linux/linux_settings.cpp src/core/file_names.cpp
+            linux/autostart.cpp src/core/i18n.cpp src/core/i18n.h linux/preview_log.cpp
+            src/settings/settings_schema.cpp src/settings/settings_transfer.cpp)
+        target_compile_options(linux_settings_test PRIVATE -ffunction-sections -fdata-sections)
+        target_link_options(linux_settings_test PRIVATE -Wl,--gc-sections)
+        target_include_directories(linux_settings_test PRIVATE linux src)
+        target_link_libraries(linux_settings_test PRIVATE Qt6::Gui Qt6::DBus)
+        add_test(NAME linux_settings_test COMMAND linux_settings_test)
+        # 以合成页面验证精确拼接及失败时不破坏已有结果。
+        # Check exact stitched pixels and failure preservation on synthetic content.
+        qt_add_executable(linux_scroll_stitch_test linux/tests/scroll_stitch_test.cpp linux/scroll_stitch.cpp)
+        target_include_directories(linux_scroll_stitch_test PRIVATE linux)
+        target_compile_definitions(linux_scroll_stitch_test PRIVATE JIETUBA_STITCH_PAGE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/stitch_page.png")
+        target_link_libraries(linux_scroll_stitch_test PRIVATE Qt6::Gui)
+        add_test(NAME linux_scroll_stitch_test COMMAND linux_scroll_stitch_test)
+        # 直接复用原版算法测试，覆盖多种图像格式、取消和非法输入。
+        # Reuse the original solver tests for formats, cancellation and invalid inputs.
+        find_package(Qt6 REQUIRED COMPONENTS Test)
+        qt_add_executable(portal_frame_test linux/tests/portal_frame_test.cpp)
+        target_include_directories(portal_frame_test PRIVATE linux)
+        target_link_libraries(portal_frame_test PRIVATE Qt6::Gui Qt6::DBus Qt6::Test)
+        add_test(NAME portal_frame_test COMMAND portal_frame_test)
+        qt_add_executable(file_manager_test linux/tests/file_manager_test.cpp linux/file_manager.cpp linux/file_manager.h)
+        target_include_directories(file_manager_test PRIVATE linux)
+        target_link_libraries(file_manager_test PRIVATE Qt6::Core Qt6::DBus Qt6::Test)
+        add_test(NAME file_manager_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:file_manager_test>)
+        set_tests_properties(file_manager_test PROPERTIES TIMEOUT 15)
+        qt_add_executable(linux_gif_test linux/tests/gif_test.cpp linux/gif_frames.cpp linux/gif_frames.h)
+        target_include_directories(linux_gif_test PRIVATE linux src)
+        target_link_libraries(linux_gif_test PRIVATE Qt6::Gui Qt6::Concurrent Qt6::Test)
+        add_test(NAME linux_gif_test COMMAND linux_gif_test)
+        set_tests_properties(linux_gif_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
+        qt_add_executable(recording_audio_test linux/tests/recording_audio_test.cpp linux/recording_audio.cpp linux/recording_audio.h)
+        target_include_directories(recording_audio_test PRIVATE linux)
+        target_link_libraries(recording_audio_test PRIVATE Qt6::Core Qt6::Test PkgConfig::GSTREAMER)
+        add_test(NAME recording_audio_test COMMAND recording_audio_test)
+        set_tests_properties(recording_audio_test PROPERTIES TIMEOUT 12 SKIP_REGULAR_EXPRESSION "SKIP   :")
+        qt_add_executable(linux_smart_erase_test tests/test_smart_erase.cpp src/canvas/smart_erase.cpp)
+        target_include_directories(linux_smart_erase_test PRIVATE src)
+        add_dependencies(linux_smart_erase_test jietuba_linux_smart_erase_build)
+        target_link_libraries(linux_smart_erase_test PRIVATE Qt6::Gui Qt6::Test jietuba_linux_smart_erase Threads::Threads ${CMAKE_DL_LIBS})
+        add_test(NAME linux_smart_erase_test COMMAND linux_smart_erase_test)
+        set_tests_properties(linux_smart_erase_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 30)
+        # 使用真实的 Linux 画布和控件，在隔离的离屏平台验证导出像素及编辑撤销。
+        # Exercise real canvas/widgets offscreen, including exported pixels and undo.
+        get_target_property(JIETUBA_MOSAIC_TEST_SOURCES jietuba_linux_ui_preview SOURCES)
+        list(REMOVE_ITEM JIETUBA_MOSAIC_TEST_SOURCES linux/ui_preview.cpp)
+        qt_add_executable(mosaic_ui_test linux/tests/mosaic_ui_test.cpp ${JIETUBA_MOSAIC_TEST_SOURCES})
+        target_compile_definitions(mosaic_ui_test PRIVATE JIETUBA_LINUX_UI_PREVIEW)
+        target_compile_definitions(mosaic_ui_test PRIVATE JIETUBA_BARCODE_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+        target_include_directories(mosaic_ui_test PRIVATE src ${JIETUBA_WAYLAND_GENERATED})
+        target_compile_options(mosaic_ui_test PRIVATE -ffunction-sections -fdata-sections)
+        target_link_options(mosaic_ui_test PRIVATE -Wl,--gc-sections)
+        add_dependencies(mosaic_ui_test jietuba_linux_smart_erase_build)
+        target_link_libraries(mosaic_ui_test PRIVATE Qt6::Widgets Qt6::Svg Qt6::DBus Qt6::Concurrent Qt6::Network Qt6::Multimedia Qt6::Test PkgConfig::GSTREAMER PkgConfig::WAYLAND_CLIENT jietuba_linux_smart_erase Threads::Threads ${CMAKE_DL_LIBS})
+        if(SPEECHD_FOUND)
+            target_include_directories(mosaic_ui_test PRIVATE ${SPEECHD_INCLUDE_DIRS})
+            target_compile_definitions(mosaic_ui_test PRIVATE JIETUBA_HAS_SPEECH_DISPATCHER)
+        endif()
+        if(TARGET Qt6::TextToSpeech)
+            target_link_libraries(mosaic_ui_test PRIVATE Qt6::TextToSpeech)
+            target_compile_definitions(mosaic_ui_test PRIVATE JIETUBA_HAS_TEXT_TO_SPEECH)
+        endif()
+        if(TARGET LayerShellQt::Interface)
+            target_link_libraries(mosaic_ui_test PRIVATE LayerShellQt::Interface)
+            target_compile_definitions(mosaic_ui_test PRIVATE JIETUBA_HAS_LAYER_SHELL)
+        endif()
+        if(TARGET PkgConfig::TESSERACT)
+            target_link_libraries(mosaic_ui_test PRIVATE PkgConfig::TESSERACT)
+            target_compile_definitions(mosaic_ui_test PRIVATE JIETUBA_HAS_TESSERACT)
+        endif()
+        if(TARGET ZXing::ZXing)
+            target_link_libraries(mosaic_ui_test PRIVATE ZXing::ZXing)
+            target_compile_definitions(mosaic_ui_test PRIVATE JIETUBA_HAS_ZXING)
+        endif()
+        # 翻译协议先用私有本地服务器测 HTTP 请求与响应，不调用外部付费服务。
+        # A private loopback server checks translation I/O without contacting a paid API.
+        qt_add_executable(linux_speech_test linux/tests/speech_dispatcher_test.cpp linux/speech_dispatcher.cpp linux/speech_dispatcher.h)
+        target_include_directories(linux_speech_test PRIVATE linux ${SPEECHD_INCLUDE_DIRS})
+        target_link_libraries(linux_speech_test PRIVATE Qt6::Core)
+        if(SPEECHD_FOUND)
+            target_compile_definitions(linux_speech_test PRIVATE JIETUBA_HAS_SPEECH_DISPATCHER)
+        endif()
+        add_test(NAME linux_speech_test COMMAND linux_speech_test)
+        qt_add_executable(linux_translation_test linux/tests/translation_client_test.cpp linux/translation_client.cpp linux/translation_client.h src/core/html_unescape.cpp)
+        target_include_directories(linux_translation_test PRIVATE linux src)
+        target_link_libraries(linux_translation_test PRIVATE Qt6::Network Qt6::Test)
+        add_test(NAME linux_translation_test COMMAND linux_translation_test)
+        set_tests_properties(linux_translation_test PROPERTIES TIMEOUT 12)
+        add_test(NAME mosaic_ui_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:mosaic_ui_test>)
+        add_dependencies(mosaic_ui_test kwin_capture_test)
+        add_test(NAME capture_reentry_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:mosaic_ui_test> --capture-reentry)
+        set_tests_properties(capture_reentry_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 35 SKIP_RETURN_CODE 77)
+        foreach(scale IN ITEMS 1 1.5 2)
+            string(REPLACE "." "_" scale_name ${scale})
+            add_test(NAME popup_layout_${scale_name}_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:mosaic_ui_test> --popup-layout-only)
+            set_tests_properties(popup_layout_${scale_name}_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_SCALE_FACTOR=${scale}" TIMEOUT 10)
+        endforeach()
+        set_tests_properties(mosaic_ui_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 25)
+        # 用本机已安装的语言数据验证 Tesseract 真正处理图片，而非只测试 UI 模拟结果。
+        # Exercise real OCR when a language model exists; skip that case on other builders.
+        qt_add_executable(tesseract_ocr_test linux/tests/tesseract_ocr_test.cpp linux/tesseract_ocr.cpp linux/tesseract_ocr.h)
+        target_include_directories(tesseract_ocr_test PRIVATE linux)
+        target_link_libraries(tesseract_ocr_test PRIVATE Qt6::Gui Qt6::Test)
+        if(TARGET PkgConfig::TESSERACT)
+            target_link_libraries(tesseract_ocr_test PRIVATE PkgConfig::TESSERACT)
+            target_compile_definitions(tesseract_ocr_test PRIVATE JIETUBA_HAS_TESSERACT)
+        endif()
+        add_test(NAME tesseract_ocr_test COMMAND tesseract_ocr_test)
+        set_tests_properties(tesseract_ocr_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 20)
+        if(TARGET ZXing::ZXing)
+            # 原版的多码/坐标夹具直接验证发行版 ZXing 与 Windows 解码结果一致。
+            # Reuse original barcode fixtures to check the distro ZXing yields the same reading order.
+            qt_add_executable(linux_barcode_test tests/test_barcode.cpp src/barcode/reader.cpp)
+            target_include_directories(linux_barcode_test PRIVATE src)
+            target_compile_definitions(linux_barcode_test PRIVATE JIETUBA_BARCODE_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+            target_link_libraries(linux_barcode_test PRIVATE Qt6::Gui Qt6::Test ZXing::ZXing)
+            add_test(NAME linux_barcode_test COMMAND linux_barcode_test)
+            set_tests_properties(linux_barcode_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 15)
+        endif()
+        # 私有模拟合成器验证协议协商、共享内存和像素方向，不读取用户屏幕。
+        # A private mock compositor verifies negotiation, SHM and pixel orientation.
+        pkg_check_modules(WAYLAND_SERVER REQUIRED IMPORTED_TARGET wayland-server)
+        foreach(protocol IN LISTS JIETUBA_WAYLAND_PROTOCOLS)
+            set(server_header ${JIETUBA_WAYLAND_GENERATED}/${protocol}-server.h)
+            add_custom_command(OUTPUT ${server_header}
+                COMMAND ${WAYLAND_SCANNER} server-header ${CMAKE_CURRENT_SOURCE_DIR}/linux/protocols/${protocol}.xml ${server_header}
+                DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/linux/protocols/${protocol}.xml VERBATIM)
+            list(APPEND JIETUBA_WAYLAND_SERVER_HEADERS ${server_header})
+        endforeach()
+        qt_add_executable(protocol_capture_test linux/tests/protocol_capture_test.cpp linux/capture/protocol_capture.cpp linux/capture/capture_router.cpp linux/capture/kwin_capture.cpp
+            ${JIETUBA_WAYLAND_SOURCES} ${JIETUBA_WAYLAND_SERVER_HEADERS})
+        target_include_directories(protocol_capture_test PRIVATE linux ${JIETUBA_WAYLAND_GENERATED})
+        target_link_libraries(protocol_capture_test PRIVATE Qt6::Gui Qt6::DBus Qt6::Concurrent PkgConfig::WAYLAND_CLIENT PkgConfig::WAYLAND_SERVER)
+        target_sources(protocol_capture_test PRIVATE linux/wayland_capture.cpp linux/wayland_capture.h linux/frame_conversion.cpp)
+        target_link_libraries(protocol_capture_test PRIVATE PkgConfig::GSTREAMER)
+        add_test(NAME protocol_capture_test COMMAND protocol_capture_test)
+        add_test(NAME protocol_fallback_test COMMAND protocol_capture_test --wlr-only)
+        set_tests_properties(protocol_capture_test protocol_fallback_test PROPERTIES TIMEOUT 15)
+    endif()
+    return()
+endif()
+
 # src/<package>/<module>.cpp, one folder per feature area.
 file(GLOB_RECURSE JIETUBA_SOURCES CONFIGURE_DEPENDS
     src/*.cpp src/*.h src/*.inc)

@@ -5,6 +5,9 @@
 #include <QConicalGradient>
 #include <QPainter>
 #include <QPointer>
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+#include <QColorDialog>
+#endif
 
 namespace jietuba {
 namespace {
@@ -59,6 +62,13 @@ void ColorPickerButton::sync_swatches() {
 }
 
 void ColorPickerButton::pick_color() {
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // Linux 预览使用 Qt 的颜色对话框；原版颜色面板和预设色继续复用。
+    // Use Qt's color dialog in the Linux preview while retaining the original panel and swatches.
+    QPointer<ColorPickerButton> self(this);
+    const QColor picked = QColorDialog::getColor(color_, this, {}, show_alpha_ ? QColorDialog::ShowAlphaChannel : QColorDialog::ColorDialogOptions{});
+    if (self && picked.isValid()) { color_ = picked; refresh(); emit color_changed(color_); }
+#else
     // Pin and GIF panels are separate windows; their host may be closed while
     // the dialog runs, deleting this button.
     QPointer<ColorPickerButton> self(this);
@@ -69,6 +79,7 @@ void ColorPickerButton::pick_color() {
         refresh();
         emit color_changed(color_);
     }
+#endif
 }
 
 void ColorPickerButton::refresh() {

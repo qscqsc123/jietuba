@@ -3,14 +3,20 @@
 #include "canvas/items/background_item.h"
 #include "canvas/scene.h"
 #include "canvas/selection_model.h"
+#ifndef JIETUBA_LINUX_UI_PREVIEW
 #include "canvas/smart_edit_controller.h"
 #include "canvas/view.h"
+#include "core/native.h"
+#else
+#include <QGraphicsView>
+#endif
 #include "core/i18n.h"
 #include "core/logger.h"
-#include "core/native.h"
 #include "core/theme.h"
 #include "core/ui_scale.h"
+#ifndef JIETUBA_LINUX_UI_PREVIEW
 #include "settings/tool_settings.h"
+#endif
 #include "tools/controller.h"
 #include <QApplication>
 #include <QClipboard>
@@ -24,13 +30,22 @@ namespace {
 QString mag_tr(const char *text) { return i18n_tr(text, "MagnifierOverlay"); }
 }
 
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+MagnifierOverlay::MagnifierOverlay(QWidget *parent, CanvasScene *scene, QGraphicsView *view, const Options &options)
+    : QWidget(parent), scene(scene), view(view) {
+#else
 MagnifierOverlay::MagnifierOverlay(QWidget *parent, CanvasScene *scene, CanvasView *view, ToolSettingsManager *config_manager)
     : QWidget(parent), scene(scene), view(view), config_manager(config_manager) {
+#endif
     // setBold rather than a Bold weight avoids font variant issues.
     font_ = QFont("Microsoft YaHei", 10);
     font_.setBold(true);
     info_font_ = QFont("Microsoft YaHei", 11);
     info_font_.setBold(true);
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    zoom_min_ = 2; zoom_max_ = 10;
+    configure(options);
+#else
     // Zoom default and range come from the app defaults.
     const auto &defaults = get_tool_settings_manager()->app_defaults();
     const double default_zoom = defaults.value("magnifier_zoom").toDouble();
@@ -42,10 +57,11 @@ MagnifierOverlay::MagnifierOverlay(QWidget *parent, CanvasScene *scene, CanvasVi
     } else {
         zoom_factor_ = default_zoom;
     }
-    refresh_theme_colors();
     refresh_display_options();
     // Connection ends with this widget.
     connect(&get_ui_scale(), &UIScaleManager::scale_changed, this, &MagnifierOverlay::apply_scale);
+#endif
+    refresh_theme_colors();
     // Keyboard nudges move the selection under a still pointer.
     if (scene && scene->selection_model) connect(scene->selection_model, &SelectionModel::rectChanged, this, [this] { if (show_selection_) refresh(); });
     apply_scale();
@@ -58,6 +74,19 @@ MagnifierOverlay::MagnifierOverlay(QWidget *parent, CanvasScene *scene, CanvasVi
     hide();
     raise();
 }
+
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+void MagnifierOverlay::configure(const Options &options) {
+    enabled_ = options.enabled; show_grid_ = options.grid;
+    copy_key_ = options.copyKey;
+    show_selection_ = options.selection; show_hint_ = options.hints;
+    zoom_factor_ = std::clamp(options.zoom, 2.0, 10.0);
+    formats_ = color_formats::enabled_formats(color_formats::normalize(options.formats));
+    format_index_ = 0;
+    clear_font_cache(); clear_sample_cache();
+    apply_scale(); refresh();
+}
+#endif
 
 void MagnifierOverlay::refresh_theme_colors() {
     const auto tc = get_theme().theme_color();
@@ -75,6 +104,7 @@ void MagnifierOverlay::refresh_theme_colors() {
 }
 
 void MagnifierOverlay::refresh_display_options() {
+#ifndef JIETUBA_LINUX_UI_PREVIEW
     if (!config_manager) {
         enabled_ = true;
         show_grid_ = false;
@@ -94,6 +124,7 @@ void MagnifierOverlay::refresh_display_options() {
     // The line count may have changed; font sizes are refitted to the longest line.
     fixed_info_font_.reset();
     fixed_info_metrics_.reset();
+#endif
 }
 
 int MagnifierOverlay::combined_height() const {
@@ -106,7 +137,13 @@ QStringList MagnifierOverlay::hint_texts() const {
     if (!show_hint_) return {};
     QStringList hints;
     if (formats_.size() > 1) hints.append(mag_tr("Shift: Switch color format"));
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // 提示跟随重绑定，禁用颜色复制时不再显示一个无效的 C 提示。
+    // Follow rebinding and omit the hint when color copying is disabled.
+    if (!copy_key_.isEmpty()) hints.append(mag_tr("C: Copy color value").replace(QStringLiteral("C:"),copy_key_+':'));
+#else
     hints.append(mag_tr("C: Copy color value"));
+#endif
     return hints;
 }
 
@@ -199,7 +236,12 @@ bool MagnifierOverlay::copy_color_info() {
     // The marker tells the clipboard history this text is a color, whatever format it is written in.
     auto *mime = new QMimeData;
     mime->setText(text);
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    mime->setColorData(sample_color(background_image()));
+    mime->setData(QStringLiteral("application/x-jietuba-color"), QByteArrayLiteral("1"));
+#else
     mime->setData(QString("application/x-qt-windows-mime;value=\"%1\"").arg(QLatin1String(jb_clipboard_color_marker_format())), QByteArrayLiteral("1"));
+#endif
     QApplication::clipboard()->setMimeData(mime);
     return true;
 }
@@ -207,7 +249,11 @@ bool MagnifierOverlay::copy_color_info() {
 void MagnifierOverlay::adjust_zoom(int delta) {
     zoom_factor_ += delta * 0.25;
     zoom_factor_ = std::max(zoom_min_, std::min(zoom_max_, zoom_factor_));
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    if (zoom_changed) zoom_changed(zoom_factor_);
+#else
     if (config_manager) config_manager->set_magnifier_zoom(zoom_factor_);
+#endif
     log_debug(T("调整倍数: {zoom_factor:.2f}x", {{"zoom_factor", zoom_factor_}}), "Magnifier");
     // The zoom changed, so the cached sample is stale.
     clear_sample_cache();
@@ -446,9 +492,14 @@ void MagnifierOverlay::draw_info_lines(QPainter &painter, const QRect &info_rect
 bool MagnifierOverlay::should_render() const {
     if (!enabled_) return false;
     if (!cursor_scene_pos || !scene || !view) return false;
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    if (!scene->sceneRect().contains(*cursor_scene_pos)) return false;
+    if (interaction_blocked && interaction_blocked()) return false;
+#else
     if (view->drawing && view->drawing->active) return false;
     if (view->text_drag && view->text_drag->active) return false;
     if (view->smart_edit_controller && view->smart_edit_controller->layer_editor && view->smart_edit_controller->layer_editor->dragging_handle) return false;
+#endif
     if (scene->selection_model->is_confirmed() && scene->tool_controller->current_tool_id() != "cursor") return false;
     return true;
 }
@@ -510,11 +561,11 @@ void MagnifierOverlay::update_sample_cache(const QImage &image) {
 }
 
 QPoint MagnifierOverlay::calc_widget_pos(const QPointF &scene_pos) const {
-    // Scene coordinates are global screen coordinates (virtual desktop).
+    // 原图像素先映射到视口，再映射到宿主；不能把 Linux 图片坐标误当作桌面全局坐标。
+    // Map source pixels through the viewport; Linux image coordinates are not desktop coordinates.
     auto *parent = parentWidget();
     if (!parent) return QPoint(0, 0);
-    const QPoint global_pt(static_cast<int>(python_round(scene_pos.x())), static_cast<int>(python_round(scene_pos.y())));
-    const auto local = parent->mapFromGlobal(global_pt);
+    const auto local = view->viewport()->mapTo(parent, view->mapFromScene(scene_pos));
     const int margin = edge_margin_;
     const int w = info_width_;
     const int h = combined_height();
@@ -525,6 +576,6 @@ QPoint MagnifierOverlay::calc_widget_pos(const QPointF &scene_pos) const {
     int y = local.y() + margin;
     if (x + w > pw - margin) x = std::max(margin, local.x() - w - margin);
     if (y + h > ph - margin) y = std::max(margin, local.y() - h - margin);
-    return QPoint(x, y);
+    return QPoint(std::clamp(x, 0, std::max(0, pw - w)), std::clamp(y, 0, std::max(0, ph - h)));
 }
 }

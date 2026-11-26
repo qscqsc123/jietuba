@@ -1,5 +1,11 @@
 #include "barcode/reader.h"
+#if __has_include(<ReadBarcode.h>)
 #include <ReadBarcode.h>
+#else
+// Linux distributions commonly install ZXing headers beneath /usr/include/ZXing.
+// 发行版通常把 ZXing 头文件放在 ZXing 子目录中；原版捆绑源码使用平铺路径。
+#include <ZXing/ReadBarcode.h>
+#endif
 #include <algorithm>
 
 namespace jietuba {

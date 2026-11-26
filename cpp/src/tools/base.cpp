@@ -64,7 +64,11 @@ QRectF drag_rect(const QPointF &start, const QPointF &end, bool square) {
 bool shift_held() { return QApplication::keyboardModifiers() & Qt::ShiftModifier; }
 
 int shift_line_angle(const ToolContext &ctx) {
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    return ctx.lineAngle;
+#else
     return ctx.settings_manager ? ctx.settings_manager->get_shift_line_angle() : DEFAULT_SHIFT_LINE_ANGLE;
+#endif
 }
 
 QPointF snap_line_end(const QPointF &anchor, const QPointF &pos, int step_degrees) {

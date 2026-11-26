@@ -10,6 +10,11 @@ class NumberItem;
 // shared with the undo commands; these statics keep the reference's names.
 class NumberTool : public Tool {
 public:
+#ifdef JIETUBA_LINUX_UI_PREVIEW
+    // Linux 暂未接入原版设置管理器，面板把新序号的样式保存在工具会话中。
+    // Linux keeps new-marker defaults here until the shared settings manager is ported.
+    QString linux_style = QStringLiteral("solid");
+#endif
     static constexpr double RADIUS_SCALE = 2;
     // Below 6 the digits inside the circle become unreadable.
     static constexpr double MIN_WIDTH = 6;
