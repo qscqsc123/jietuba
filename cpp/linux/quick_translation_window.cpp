@@ -305,12 +305,23 @@ bool LinuxQuickTranslationWindow::eventFilter(QObject *object,QEvent *event) {
     // 检查全局鼠标点击以实现点击外部关闭
     if (settings_.closeTranslationOnClickOutside() && event->type() == QEvent::MouseButtonPress) {
         auto *mouseEvent = static_cast<QMouseEvent *>(event);
-        // 检查点击是否在窗口外
-        QWidget *clickedWidget = qobject_cast<QWidget*>(object);
-        if (clickedWidget && !isAncestorOf(clickedWidget) && clickedWidget != this) {
+        // 获取鼠标全局位置
+        QPoint globalPos = mouseEvent->globalPosition().toPoint();
+        
+        // 检查点击是否在窗口几何区域外
+        QRect windowGeometry = geometry();
+        if (surface_) {
+            // Layer shell 模式：使用 surface 的位置
+            windowGeometry.moveTopLeft(surface_->geometry().topLeft() + pos());
+        } else {
+            // 普通模式：使用窗口全局位置
+            windowGeometry.moveTopLeft(mapToGlobal(QPoint(0, 0)));
+        }
+        
+        if (!windowGeometry.contains(globalPos)) {
             // 点击在窗口外，关闭窗口
             QTimer::singleShot(0, this, &LinuxQuickTranslationWindow::close);
-            return false; // 不拦截事件，让其他控件正常处理
+            return false;
         }
     }
     

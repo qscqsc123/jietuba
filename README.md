@@ -35,15 +35,29 @@ jietuba-linux 是将 Windows 版 jietuba 移植到 Linux 平台的原生版本�
 - Tesseract OCR
 
 ### 可选依赖（推荐）
-- **ONNX Runtime** - 启用 PP-OCR 高精度识别
+- **ONNX Runtime** (>= 1.24) - 启用 PP-OCR 高精度识别
 - FFmpeg - 视频录制支持
 
-### Arch Linux 安装依赖
+### Arch Linux
 ```bash
-sudo pacman -S qt6-base qt6-multimedia cmake rust tesseract onnxruntime
+sudo pacman -S qt6-base qt6-multimedia cmake rust tesseract onnxruntime ffmpeg
 ```
 
-## 编译安装
+### Ubuntu/Debian
+```bash
+sudo apt install qt6-base-dev qt6-multimedia-dev cmake rustc tesseract-ocr libonnxruntime-dev ffmpeg
+```
+
+## 快速安装（Arch Linux）
+
+使用 AUR 包：
+
+```bash
+cd pkg
+makepkg -si
+```
+
+## 从源码编译
 
 ### 1. 克隆仓库
 ```bash
@@ -86,8 +100,6 @@ jietuba-linux
 
 ## OCR 引擎说明
 
-程序支持两种 OCR 引擎：
-
 ### PP-OCR（推荐）
 - **精度**：95%+ 中文识别率
 - **速度**：2-3 秒
@@ -100,19 +112,10 @@ jietuba-linux
 - **依赖**：系统自带 Tesseract
 
 ### 切换引擎
-1. 打开设置 → 截图 → OCR 设置
-2. 选择 OCR 引擎：
-   - **自动选择**：优先使用 PP-OCR（如果可用）
-   - **PP-OCR (高精度)**：强制使用 PP-OCR
-   - **Tesseract**：使用系统 Tesseract
-
-## 打包
-
-### 创建 Arch Linux 包
-```bash
-cd pkg
-makepkg -si
-```
+打开设置 → 截图 → OCR 设置，选择：
+- **自动选择**：优先使用 PP-OCR（如果可用）
+- **PP-OCR (高精度)**：强制使用 PP-OCR
+- **Tesseract**：使用系统 Tesseract
 
 ## 技术架构
 
@@ -120,10 +123,14 @@ makepkg -si
 - **Rust**：PP-OCR 引擎、图像处理核心
 - **CMake**：构建系统
 
+## 配置文件
+
+设置保存在：`~/.config/jietuba-linux/settings.ini`
+
 ## 已知问题
 
 - Wayland 支持仍在完善中，建议使用 X11
-- 部分桌面环境可能需要手动配置快捷键
+- 部分桌面环境可能需要手动配置全局快捷键
 
 ## 上游项目
 
