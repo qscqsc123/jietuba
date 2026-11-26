@@ -1,10 +1,16 @@
-# Maintainer: Your Name <your.email@example.com>
+git add .
+git commit -m "feat: 添加 X11 截图支持和 PP-OCR 高精度识别
+
+- 新增 X11 截图后端，支持 XFCE/MATE 等 Xorg 桌面
+- 移植 PP-OCR，中文识别精度提升到 95%+
+- 整理项目目录结构，删除临时文件
+- 添加依赖说明和测试文档"# Maintainer: qscqsc123 <wy56752466@gmail.com>
 pkgname=jietuba-linux-git
 pkgver=r1.0.0
 pkgrel=1
 pkgdesc="Screenshot, annotation, OCR, pin, and recording tool (Linux port)"
 arch=('x86_64' 'aarch64')
-url="https://github.com/YOUR_USERNAME/jietuba-linux"
+url="https://github.com/qscqsc123/jietuba"
 license=('MIT')
 depends=(
     'qt6-base>=6.8'
