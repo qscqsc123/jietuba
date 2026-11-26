@@ -2140,9 +2140,31 @@ public:
     CaptureSession(QWidget *launcher, LinuxSettings &settings, bool trayAvailable, QObject *parent = nullptr)
         : QObject(parent), launcher_(launcher), settings_(settings), trayAvailable_(trayAvailable), router_(this) {
         connect(&router_, &CaptureRouter::frameReady, this, [this](const QImage &image) {
-            if (!busy_ || !selectors_.isEmpty() || logicalSelection_.isEmpty() || index_ >= screens_.size()) return;
+            if (!busy_ || index_ >= screens_.size()) return;
             const auto &screen = screens_[index_];
             if (!screen.screen || screen.screen->geometry() != screen.geometry) { fail(QStringLiteral("截图期间显示器配置发生变化，请重试。")); return; }
+            
+            // 先截图再框选模式：截取全屏用于框选
+            // Capture-first mode: capture fullscreen for selection
+            if (logicalSelection_.isEmpty() && selectors_.isEmpty()) {
+                // 验证全屏截图尺寸
+                // Validate fullscreen capture size
+                const double scale = image.devicePixelRatio();
+                const QSize logicalSize = screen.geometry.size();
+                if (image.isNull() || std::abs(image.width() - logicalSize.width() * scale) > 2.0
+                    || std::abs(image.height() - logicalSize.height() * scale) > 2.0) {
+                    fail(QStringLiteral("显示器 %1 返回的截图尺寸不匹配。").arg(screen.name)); 
+                    return;
+                }
+                images_.append(image);
+                ++index_;
+                captureForSelection();
+                return;
+            }
+            
+            // 传统模式：先框选再截图区域
+            // Traditional mode: selection first, then capture region
+            if (!selectors_.isEmpty() || logicalSelection_.isEmpty()) return;
             // 防止后端返回错误的旋转方向或尺寸时，把坐标错误的图片交给用户。
             // Reject inconsistent aspect ratios instead of exporting misaligned selections.
             const double scale = image.devicePixelRatio();
@@ -2268,11 +2290,11 @@ public:
         logicalSelection_ = {};
         busy_ = true;
         syncRecordingWindows();
-        // 设置窗口属于用户正在操作的桌面内容，截图时必须保留，不能自动隐藏或关闭。
-        // Settings are part of the user's desktop and must stay visible while selecting/capturing.
+        // 先截图冻结画面，再在冻结的画面上框选
+        // Capture first to freeze the frame, then select on the frozen image
         const auto generation = ++generation_;
-        QTimer::singleShot(0, this, [this, generation] {
-            if (busy_ && generation == generation_) beginSelection();
+        QTimer::singleShot(60, this, [this, generation] {
+            if (busy_ && generation == generation_) captureForSelection();
         });
     }
 private:
@@ -2394,6 +2416,44 @@ private:
         clearSelectors();
         screens_.clear(); images_.clear();
         restoreEditor();
+    }
+    void captureForSelection() {
+        // 先截取全屏画面用于框选
+        // Capture fullscreen first for frozen selection
+        if (index_ < screens_.size()) {
+            const auto &output = screens_[index_];
+            router_.capture(output.name);
+            return;
+        }
+        // 所有屏幕截图完成，开始在冻结画面上框选
+        // All screens captured, begin selection on frozen frames
+        beginSelectionOnCaptured();
+    }
+    void beginSelectionOnCaptured() {
+        // 在冻结的截图上显示编辑窗口让用户框选
+        // Show edit window on frozen capture for user selection
+        for (int i = 0; i < screens_.size(); ++i) {
+            const auto &output = screens_[i];
+            if (!output.screen || output.screen->geometry() != output.geometry) { cancelSelection(); return; }
+            
+            auto *overlay = new CapturePreview(images_[i], &settings_);
+            overlay->setScreen(output.screen);
+            overlays_.append(overlay);
+            
+            // 用户完成选区后的回调
+            // Callback when user completes selection
+            overlay->setOverlayMode([this, overlay, i] { 
+                finishEditorFromSelection(overlay, i);
+            });
+            
+            overlay->showFullScreen();
+        }
+        syncEditorLevels();
+    }
+    void finishEditorFromSelection(CapturePreview *overlay, int screenIndex) {
+        // 编辑器已经有选区和编辑功能，直接使用
+        // Editor already has selection and editing, just use it
+        finishEditor(overlay);
     }
     void beginSelection() {
         for (const auto &output : screens_) {
