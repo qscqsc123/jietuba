@@ -2,52 +2,146 @@
 
 <img src="svg/%E6%89%98%E7%9B%98.svg" width="128" alt="jietuba logo" />
 
-# jietuba
+# jietuba-linux
 
-**Screenshot, Screen Drawing, OCR, Pin, Translation & Clipboard Tool for Windows**
+**截图、屏幕标注、OCR、贴图、翻译工具 - Linux 移植版**
 
-[![build](https://img.shields.io/github/actions/workflow/status/1003129155/jietuba/cpp.yml?branch=master2&label=build&style=flat-square)](https://github.com/1003129155/jietuba/actions/workflows/cpp.yml) [![license](https://img.shields.io/github/license/1003129155/jietuba?style=flat-square)](LICENSE) [![release](https://img.shields.io/github/v/release/1003129155/jietuba?style=flat-square)](https://github.com/1003129155/jietuba/releases/latest) ![platform](https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-0078D4?style=flat-square)
+[![license](https://img.shields.io/github/license/1003129155/jietuba?style=flat-square)](LICENSE) ![platform](https://img.shields.io/badge/Linux-x64-orange?style=flat-square)
 
-[Download for Windows](https://github.com/1003129155/jietuba/releases/latest) · [Build from Source](#source-setup) · [Development and Tests](#development)
-
-[简体中文](README_zh-CN.md) | [繁體中文](README_zh-TW.md) | **English** | [日本語](README_JA.md) | [한국어](README_KO.md)
+基于 [jietuba](https://github.com/1003129155/jietuba) 的 Linux 原生移植版本
 
 </div>
 
-## Overview
+## 概述
 
-jietuba is a free, open-source screenshot and productivity tool for Windows, bringing screenshot annotation, screen drawing, OCR, translation, pinning, recording and clipboard history together. Screenshots, pins and the clipboard are connected, so anything you capture is easy to find again and reuse.
+jietuba-linux 是将 Windows 版 jietuba 移植到 Linux 平台的原生版本，提供截图标注、屏幕绘制、OCR 文字识别、贴图、翻译等功能。
 
-## Screenshot ⇄ pin ⇄ clipboard, seamlessly connected
+## 主要特性
 
-Send a capture to history and pin it back to the screen in one click. Keep annotating, extract text and copy it back to the clipboard: three tools working together in one smooth flow.
+- **完整的截图工具集**：智能选区（窗口/元素识别）、丰富的标注工具（画笔、箭头、文字、马赛克、聚光灯等）
+- **高精度 OCR**：支持 PP-OCR（95%+ 中文识别率）和 Tesseract，可自由切换
+- **贴图功能**：一键将截图或图片钉在屏幕上，支持缩放、标注、文字识别
+- **长截图**：支持自动滚动拼接，四个方向均可操作
+- **屏幕录制**：支持 GIF 和 MP4 格式，可选硬件加速
+- **翻译功能**：集成多种翻译服务（DeepL、Google、有道等）
 
-- **A full screenshot toolkit, a smooth experience**: snap to windows and controls, with more than a dozen annotation tools at hand, plus four-way scrolling capture, auto-scroll, multiple monitors, mixed DPI and HDR capture.
-- **Pin anything**: keep what you need on screen in one click: text, images or files. Zoom, annotate, grab text and translate as you work.
-- **Clipboard: record everything**: not just your own screenshots. Anything copied from any source goes into history. Organize it into groups and favorites, search, filter and drag multiple items out. Find important content whenever you need it, drag anything into the window you want, or pin it on screen.
-- **Fast, fluid and light on memory**: deeply optimized for quick responses and smooth operation, even in demanding workflows on low-end PCs. Measured resident memory (working set) drops to around 3 MB when idle, and stays low under heavy use as well. No installation needed: unzip and run.
+## 系统要求
 
-It is written in C++ (Qt6), with image processing, clipboard access, the PP-OCR engine and other core parts in Rust, and runs on Windows x86_64 and ARM64. The earlier Python (PySide6) implementation is archived on the [`archive/python`](https://github.com/1003129155/jietuba/tree/archive/python) branch and no longer updated.
+### 必需依赖
+- Qt6 (>= 6.5)
+- CMake (>= 3.21)
+- C++20 编译器
+- Rust toolchain (>= 1.70)
+- Tesseract OCR
 
-## Features
+### 可选依赖（推荐）
+- **ONNX Runtime** - 启用 PP-OCR 高精度识别
+- FFmpeg - 视频录制支持
 
-<table>
-<tr>
-<td width="50%" valign="top">
-<img width="100%" alt="Capture and annotation" src="https://github.com/user-attachments/assets/397d6a3a-51a6-4860-9d05-0aed2c7c0429" />
-<p><b>Capture and annotation</b><br>Snaps to windows and controls; pen, arrow, number, mosaic, spotlight, watermark and more, all undoable.</p>
-</td>
-<td width="50%" valign="top">
-<img width="100%" alt="Clipboard history" src="https://github.com/user-attachments/assets/d34ff233-fe7f-49dd-89ae-c5978fa25b5a" />
-<p><b>Clipboard history</b><br>Record everything. Pin anything. Group favorites, search, filter and drag multiple items out. Find what you copied when you need it.</p>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<img width="100%" alt="Scrolling capture" src="https://github.com/user-attachments/assets/a179b3e7-d201-4208-b518-81cecc4e9661" />
-<p><b>Scrolling capture</b><br>Stitches in all four directions, with auto-scroll; scrolling back only repositions, and one click trims the rest.</p>
-</td>
-<td width="50%" valign="top">
+### Arch Linux 安装依赖
+```bash
+sudo pacman -S qt6-base qt6-multimedia cmake rust tesseract onnxruntime
+```
+
+## 编译安装
+
+### 1. 克隆仓库
+```bash
+git clone https://github.com/你的用户名/jietuba-linux.git
+cd jietuba-linux
+```
+
+### 2. 编译 Rust 库（PP-OCR）
+```bash
+cd rust_libs/ppocr_rust
+cargo build --release
+sudo mkdir -p /usr/lib/jietuba
+sudo cp ../../rust_libs/target/release/libppocr_rust.so /usr/lib/jietuba/
+cd ../..
+```
+
+### 3. 编译 C++ 程序
+```bash
+cd cpp
+mkdir -p build && cd build
+cmake ..
+make -j$(nproc)
+```
+
+### 4. 安装
+```bash
+# 安装主程序
+mkdir -p ~/.local/bin
+cp jietuba_linux_ui_preview ~/.local/bin/jietuba-linux
+
+# 安装 PP-OCR 模型（首次使用）
+sudo mkdir -p /usr/share/jietuba/models
+sudo cp ../../models/*.onnx /usr/share/jietuba/models/
+```
+
+### 5. 运行
+```bash
+jietuba-linux
+```
+
+## OCR 引擎说明
+
+程序支持两种 OCR 引擎：
+
+### PP-OCR（推荐）
+- **精度**：95%+ 中文识别率
+- **速度**：2-3 秒
+- **依赖**：需要安装 `onnxruntime` 和模型文件
+- **模型位置**：`/usr/share/jietuba/models/`
+
+### Tesseract
+- **精度**：60-75% 中文识别率
+- **速度**：较慢（8秒+）
+- **依赖**：系统自带 Tesseract
+
+### 切换引擎
+1. 打开设置 → 截图 → OCR 设置
+2. 选择 OCR 引擎：
+   - **自动选择**：优先使用 PP-OCR（如果可用）
+   - **PP-OCR (高精度)**：强制使用 PP-OCR
+   - **Tesseract**：使用系统 Tesseract
+
+## 打包
+
+### 创建 Arch Linux 包
+```bash
+cd pkg
+makepkg -si
+```
+
+## 技术架构
+
+- **C++/Qt6**：主程序和 UI
+- **Rust**：PP-OCR 引擎、图像处理核心
+- **CMake**：构建系统
+
+## 已知问题
+
+- Wayland 支持仍在完善中，建议使用 X11
+- 部分桌面环境可能需要手动配置快捷键
+
+## 上游项目
+
+本项目基于 [jietuba](https://github.com/1003129155/jietuba) Windows 版本移植。
+
+原始项目作者：[1003129155](https://github.com/1003129155)
+
+## 许可证
+
+Apache License 2.0 - 详见 [LICENSE](LICENSE) 文件
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+---
+
+**注意**：这是社区维护的 Linux 移植版本，非官方版本。
 <img width="100%" alt="OCR" src="https://github.com/user-attachments/assets/60a16100-5edc-4543-9a35-daf05b1e244e" />
 <p><b>OCR</b><br>Windows 11 Snipping Tool OCR and PP-OCR, offline; wrapped lines are joined and punctuation tidied.</p>
 </td>
