@@ -44,6 +44,43 @@ public:
     void setOcrPosition(const QString &position);
     QString ocrEngine() const;
     void setOcrEngine(const QString &engine);
+    
+    // 屏幕标注设置
+    bool keepAnnotationWindow() const;
+    void setKeepAnnotationWindow(bool value);
+    bool showAnnotationToolbarOnHover() const;
+    void setShowAnnotationToolbarOnHover(bool value);
+    bool highlightCursorOnStart() const;
+    void setHighlightCursorOnStart(bool value);
+    
+    // 翻译设置
+    bool closeTranslationOnClickOutside() const;
+    void setCloseTranslationOnClickOutside(bool value);
+    bool ignoreLineBreaksInTranslation() const;
+    void setIgnoreLineBreaksInTranslation(bool value);
+    bool keepOriginalFormat() const;
+    void setKeepOriginalFormat(bool value);
+    
+    // 外观设置
+    QString themeColor() const;
+    void setThemeColor(const QString &color);
+    QString outsideSelectionColor() const;
+    void setOutsideSelectionColor(const QString &color);
+    bool showSelectionPreview() const;
+    void setShowSelectionPreview(bool value);
+    
+    // 日志设置
+    bool enableLogging() const;
+    void setEnableLogging(bool value);
+    bool saveLogToFile() const;
+    void setSaveLogToFile(bool value);
+    QString logLevel() const;
+    void setLogLevel(const QString &level);
+    int logRetentionDays() const;
+    void setLogRetentionDays(int days);
+    QString logDirectory() const;
+    void setLogDirectory(const QString &path);
+    
     bool crossToolSelection() const;
     void setCrossToolSelection(bool value);
     int shiftLineAngle() const;

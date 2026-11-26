@@ -280,6 +280,105 @@ void LinuxSettings::setOcrEngine(const QString &v) {
     if(QStringList{"auto", "ppocr", "tesseract"}.contains(v)) 
         settings_.setValue("app/ocr_engine", v); 
 }
+
+// 屏幕标注设置
+bool LinuxSettings::keepAnnotationWindow() const { 
+    return settings_.value("annotation/keep_window", false).toBool(); 
+}
+void LinuxSettings::setKeepAnnotationWindow(bool value) { 
+    settings_.setValue("annotation/keep_window", value); 
+}
+bool LinuxSettings::showAnnotationToolbarOnHover() const { 
+    return settings_.value("annotation/toolbar_on_hover", false).toBool(); 
+}
+void LinuxSettings::setShowAnnotationToolbarOnHover(bool value) { 
+    settings_.setValue("annotation/toolbar_on_hover", value); 
+}
+bool LinuxSettings::highlightCursorOnStart() const { 
+    return settings_.value("annotation/highlight_cursor", false).toBool(); 
+}
+void LinuxSettings::setHighlightCursorOnStart(bool value) { 
+    settings_.setValue("annotation/highlight_cursor", value); 
+}
+
+// 翻译设置
+bool LinuxSettings::closeTranslationOnClickOutside() const { 
+    return settings_.value("translation/close_on_click_outside", true).toBool(); 
+}
+void LinuxSettings::setCloseTranslationOnClickOutside(bool value) { 
+    settings_.setValue("translation/close_on_click_outside", value); 
+}
+bool LinuxSettings::ignoreLineBreaksInTranslation() const { 
+    return settings_.value("translation/ignore_line_breaks", false).toBool(); 
+}
+void LinuxSettings::setIgnoreLineBreaksInTranslation(bool value) { 
+    settings_.setValue("translation/ignore_line_breaks", value); 
+}
+bool LinuxSettings::keepOriginalFormat() const { 
+    return settings_.value("translation/keep_original_format", false).toBool(); 
+}
+void LinuxSettings::setKeepOriginalFormat(bool value) { 
+    settings_.setValue("translation/keep_original_format", value); 
+}
+
+// 外观设置
+QString LinuxSettings::themeColor() const {
+    return settings_.value("appearance/theme_color", "#0078D4").toString();
+}
+void LinuxSettings::setThemeColor(const QString &color) {
+    settings_.setValue("appearance/theme_color", color);
+}
+QString LinuxSettings::outsideSelectionColor() const {
+    return settings_.value("appearance/outside_selection_color", "#000000").toString();
+}
+void LinuxSettings::setOutsideSelectionColor(const QString &color) {
+    settings_.setValue("appearance/outside_selection_color", color);
+}
+bool LinuxSettings::showSelectionPreview() const {
+    return settings_.value("appearance/show_selection_preview", true).toBool();
+}
+void LinuxSettings::setShowSelectionPreview(bool value) {
+    settings_.setValue("appearance/show_selection_preview", value);
+}
+
+// 日志设置
+bool LinuxSettings::enableLogging() const {
+    return settings_.value("log/enabled", false).toBool();
+}
+void LinuxSettings::setEnableLogging(bool value) {
+    settings_.setValue("log/enabled", value);
+}
+bool LinuxSettings::saveLogToFile() const {
+    return settings_.value("log/save_to_file", false).toBool();
+}
+void LinuxSettings::setSaveLogToFile(bool value) {
+    settings_.setValue("log/save_to_file", value);
+}
+QString LinuxSettings::logLevel() const {
+    const auto v = settings_.value("log/level", "info").toString();
+    return QStringList{"debug", "info", "warning", "error"}.contains(v) ? v : "info";
+}
+void LinuxSettings::setLogLevel(const QString &level) {
+    if (QStringList{"debug", "info", "warning", "error"}.contains(level))
+        settings_.setValue("log/level", level);
+}
+int LinuxSettings::logRetentionDays() const {
+    const int days = settings_.value("log/retention_days", 7).toInt();
+    return days >= 1 && days <= 365 ? days : 7;
+}
+void LinuxSettings::setLogRetentionDays(int days) {
+    if (days >= 1 && days <= 365)
+        settings_.setValue("log/retention_days", days);
+}
+QString LinuxSettings::logDirectory() const {
+    QString defaultDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/logs";
+    return settings_.value("log/directory", defaultDir).toString();
+}
+void LinuxSettings::setLogDirectory(const QString &path) {
+    if (!path.trimmed().isEmpty())
+        settings_.setValue("log/directory", QDir::cleanPath(path));
+}
+
 bool LinuxSettings::crossToolSelection() const { return settings_.value("app/cross_tool_selection", true).toBool(); }
 void LinuxSettings::setCrossToolSelection(bool value) { settings_.setValue("app/cross_tool_selection", value); }
 bool LinuxSettings::textAlwaysOnTop() const { return settings_.value("app/text_always_on_top", true).toBool(); }

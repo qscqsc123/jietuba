@@ -390,13 +390,34 @@ void LinuxSettingsWindow::buildPages() {
     fixedSetting(annotationGroup,jietuba::FluentIcon::Brush,QStringLiteral("独立屏幕标注"),QStringLiteral("Alt+4 或托盘启动；工具栏在当前屏幕底部居中，绘图后按 Esc 恢复鼠标穿透。"),QStringLiteral("已接入"));
     fixedSetting(annotationGroup,jietuba::FluentIcon::Layout,QStringLiteral("工具栏按钮"),QStringLiteral("复用原版工具、白板、撤销、清空与隐藏；通过工具栏的“更多 → 调整”修改布局。"),QStringLiteral("工具栏编辑"));
     annotation->addWidget(annotationGroup);
-    pendingGroup(annotation, QStringLiteral("标注扩展设置"), {
-        {jietuba::FluentIcon::Brush, "保留屏幕标注", "退出截图选区后仍保留画笔标注图层。"},
-        {jietuba::FluentIcon::Camera, "截图时隐藏工具栏", "在录制或截屏结果中排除画笔工具栏。"},
+    
+    auto *annotationExtras = new jietuba::SettingCardGroup(QStringLiteral("标注扩展设置"), annotation->parentWidget());
+    auto *keepWindow = new jietuba::SwitchSettingCard(jietuba::FluentIcon::Brush, "保留屏幕标注窗口", 
+                                                      "退出截图选区后仍保留画笔标注图层。", annotationExtras);
+    keepWindow->setChecked(settings_.keepAnnotationWindow());
+    annotationExtras->addSettingCard(keepWindow);
+    connect(keepWindow, &jietuba::SwitchSettingCard::checkedChanged, this, [this](bool on) {
+        settings_.setKeepAnnotationWindow(on); persist();
     });
-    pendingGroup(annotation, QStringLiteral("鼠标效果"), {
-        {jietuba::FluentIcon::Palette, "开始时高亮光标", "启动屏幕标注时显示光标高亮。"},
+    
+    auto *hoverToolbar = new jietuba::SwitchSettingCard(jietuba::FluentIcon::Camera, "轻触时隐藏工具栏",
+                                                        "在录制或截屏结果中排除画笔工具栏。", annotationExtras);
+    hoverToolbar->setChecked(settings_.showAnnotationToolbarOnHover());
+    annotationExtras->addSettingCard(hoverToolbar);
+    connect(hoverToolbar, &jietuba::SwitchSettingCard::checkedChanged, this, [this](bool on) {
+        settings_.setShowAnnotationToolbarOnHover(on); persist();
     });
+    annotation->addWidget(annotationExtras);
+    
+    auto *mouseEffects = new jietuba::SettingCardGroup(QStringLiteral("鼠标效果"), annotation->parentWidget());
+    auto *highlightCursor = new jietuba::SwitchSettingCard(jietuba::FluentIcon::Palette, "开始时高亮光标",
+                                                           "启动屏幕标注时显示光标高亮。", mouseEffects);
+    highlightCursor->setChecked(settings_.highlightCursorOnStart());
+    mouseEffects->addSettingCard(highlightCursor);
+    connect(highlightCursor, &jietuba::SwitchSettingCard::checkedChanged, this, [this](bool on) {
+        settings_.setHighlightCursorOnStart(on); persist();
+    });
+    annotation->addWidget(mouseEffects);
     auto *pointerEffects = new jietuba::SettingCardGroup(QStringLiteral("光标效果支持"), annotation->parentWidget());
     fixedSetting(pointerEffects, jietuba::FluentIcon::Brush, QStringLiteral("点击波纹"),
                  QStringLiteral("开启工具栏的光标高亮后，标注层中的左键显示黄色波纹，右键显示蓝色波纹。KDE 下穿透模式支持光标位置跟踪；其它应用的点击暂不提供波纹。"), QStringLiteral("工具栏开启"));
@@ -484,11 +505,33 @@ void LinuxSettingsWindow::buildPages() {
     connect(endpoint, &QLineEdit::editingFinished, this, [this, endpoint] { settings_.setTranslationEndpoint(endpoint->text()); persist(); });
     connect(target, &QComboBox::currentIndexChanged, this, [this, target] { settings_.setTranslationTarget(target->currentData().toString()); persist(); });
     translation->addWidget(translationGroup);
-    pendingGroup(translation, QStringLiteral("翻译选项"), {
-        {jietuba::FluentIcon::Hide, "点击外部时关闭", "快捷键弹出的翻译窗失去焦点时自动关闭。"},
-        {jietuba::FluentIcon::Alignment, "忽略换行", "把 OCR 的多行文字合并后翻译。"},
-        {jietuba::FluentIcon::Document, "保留原文格式", "翻译时尽量保持段落与标点形式。"},
+    
+    auto *translationOptions = new jietuba::SettingCardGroup(QStringLiteral("翻译选项"), translation->parentWidget());
+    auto *closeOnClickOut = new jietuba::SwitchSettingCard(jietuba::FluentIcon::Hide, "点击外部时关闭",
+                                                           "快捷键弹出的翻译窗失去焦点时自动关闭。", translationOptions);
+    closeOnClickOut->setChecked(settings_.closeTranslationOnClickOutside());
+    translationOptions->addSettingCard(closeOnClickOut);
+    connect(closeOnClickOut, &jietuba::SwitchSettingCard::checkedChanged, this, [this](bool on) {
+        settings_.setCloseTranslationOnClickOutside(on); persist();
     });
+    
+    auto *ignoreBreaks = new jietuba::SwitchSettingCard(jietuba::FluentIcon::Alignment, "忽略换行",
+                                                        "把 OCR 的多行文字合并后翻译。", translationOptions);
+    ignoreBreaks->setChecked(settings_.ignoreLineBreaksInTranslation());
+    translationOptions->addSettingCard(ignoreBreaks);
+    connect(ignoreBreaks, &jietuba::SwitchSettingCard::checkedChanged, this, [this](bool on) {
+        settings_.setIgnoreLineBreaksInTranslation(on); persist();
+    });
+    
+    auto *keepFormat = new jietuba::SwitchSettingCard(jietuba::FluentIcon::Document, "保留原文格式",
+                                                      "翻译时尽量保持段落与标点形式。", translationOptions);
+    keepFormat->setChecked(settings_.keepOriginalFormat());
+    translationOptions->addSettingCard(keepFormat);
+    connect(keepFormat, &jietuba::SwitchSettingCard::checkedChanged, this, [this](bool on) {
+        settings_.setKeepOriginalFormat(on); persist();
+    });
+    translation->addWidget(translationOptions);
+    
     pendingGroup(translation, QStringLiteral("朗读"), {
         {jietuba::FluentIcon::Language, "原文与译文语音", "选择文本朗读语音。"},
         {jietuba::FluentIcon::StopWatch, "语速", "调整朗读速度。"},
@@ -505,10 +548,29 @@ void LinuxSettingsWindow::buildPages() {
         settings_.setTheme(theme->currentData().toString()); jietuba::get_ui_theme()->set_mode(settings_.theme(), false); persist();
     });
     appearance->addWidget(appearanceGroup);
-    pendingGroup(appearance, QStringLiteral("应用主题扩展"), {
-        {jietuba::FluentIcon::Palette, "主题色", "自定义截图选区和窗口强调色。"},
-        {jietuba::FluentIcon::Brush, "选区外遮罩颜色", "自定义框选时选区外的遮罩颜色。"},
+    
+    auto *themeExtras = new jietuba::SettingCardGroup(QStringLiteral("应用主题扩展"), appearance->parentWidget());
+    auto *themeColorCard = card(themeExtras, jietuba::FluentIcon::Palette, QStringLiteral("主题色"), QStringLiteral("自定义截图选区和窗口强调色。"));
+    auto *themeColorInput = new jietuba::LineEdit(themeColorCard);
+    themeColorInput->setMaximumWidth(jietuba::SettingCard::CONTROL_COLUMN_MAX);
+    themeColorInput->setText(settings_.themeColor());
+    themeColorInput->setPlaceholderText("#0078D4");
+    themeColorCard->addControl(themeColorInput);
+    connect(themeColorInput, &QLineEdit::editingFinished, this, [this, themeColorInput] {
+        settings_.setThemeColor(themeColorInput->text()); persist();
     });
+    
+    auto *maskColorCard = card(themeExtras, jietuba::FluentIcon::Brush, QStringLiteral("选区外遮罩颜色"), QStringLiteral("自定义框选时选区外的遮罩颜色。"));
+    auto *maskColorInput = new jietuba::LineEdit(maskColorCard);
+    maskColorInput->setMaximumWidth(jietuba::SettingCard::CONTROL_COLUMN_MAX);
+    maskColorInput->setText(settings_.outsideSelectionColor());
+    maskColorInput->setPlaceholderText("#000000");
+    maskColorCard->addControl(maskColorInput);
+    connect(maskColorInput, &QLineEdit::editingFinished, this, [this, maskColorInput] {
+        settings_.setOutsideSelectionColor(maskColorInput->text()); persist();
+    });
+    appearance->addWidget(themeExtras);
+    
     auto *captureAppearance = new jietuba::SettingCardGroup(QStringLiteral("截图外观"), appearance->parentWidget(), QStringLiteral("capture"));
     auto *borderCard = card(captureAppearance, jietuba::FluentIcon::Edit, QStringLiteral("选区边框宽度"), QStringLiteral("下一次截图时使用的边框宽度，单位为图片像素。"));
     auto *border = new jietuba::ComboBox(borderCard); border->setObjectName(QStringLiteral("borderWidth"));
@@ -520,9 +582,17 @@ void LinuxSettingsWindow::buildPages() {
     fixedSetting(captureAppearance,jietuba::FluentIcon::Palette,QStringLiteral("工具栏按钮布局"),
         QStringLiteral("截图工具栏的“更多 → 调整”中排序、设置显示模式或恢复默认；确认后自动保存。"),QStringLiteral("更多 → 调整"));
     appearance->addWidget(captureAppearance);
-    pendingGroup(appearance, QStringLiteral("截图外观扩展"), {
-        {jietuba::FluentIcon::Camera, "选区预览", "框选时显示所选内容的预览效果。"},
+    
+    auto *captureExtras = new jietuba::SettingCardGroup(QStringLiteral("截图外观扩展"), appearance->parentWidget());
+    auto *selectionPreview = new jietuba::SwitchSettingCard(jietuba::FluentIcon::Camera, "选区预览",
+                                                            "框选时显示所选内容的预览效果。", captureExtras);
+    selectionPreview->setChecked(settings_.showSelectionPreview());
+    captureExtras->addSettingCard(selectionPreview);
+    connect(selectionPreview, &jietuba::SwitchSettingCard::checkedChanged, this, [this](bool on) {
+        settings_.setShowSelectionPreview(on); persist();
     });
+    appearance->addWidget(captureExtras);
+    
     pendingGroup(appearance, QStringLiteral("剪贴板外观"), {
         {jietuba::FluentIcon::Paste, "剪贴板主题", "选择历史窗口的颜色和缩略图样式。"},
     });
@@ -532,12 +602,54 @@ void LinuxSettingsWindow::buildPages() {
     fixedSetting(logCurrent, jietuba::FluentIcon::History, QStringLiteral("日志输出"),
                  QStringLiteral("当前 Linux 版向启动它的终端输出运行信息。"), QStringLiteral("终端"));
     logs->addWidget(logCurrent);
-    pendingGroup(logs, QStringLiteral("文件日志"), {
-        {jietuba::FluentIcon::History, "保存日志", "把运行信息持续写入日志文件。"},
-        {jietuba::FluentIcon::Filter, "日志级别", "选择调试、信息、警告等最小记录级别。"},
-        {jietuba::FluentIcon::DateTime, "保留时间", "自动清理超过期限的旧日志。"},
-        {jietuba::FluentIcon::Folder, "日志文件夹", "查看或修改日志存储位置。"},
+    
+    auto *fileLog = new jietuba::SettingCardGroup(QStringLiteral("文件日志"), logs->parentWidget());
+    auto *saveLog = new jietuba::SwitchSettingCard(jietuba::FluentIcon::History, "保存日志",
+                                                   "把运行信息持续写入日志文件。", fileLog);
+    saveLog->setChecked(settings_.saveLogToFile());
+    fileLog->addSettingCard(saveLog);
+    connect(saveLog, &jietuba::SwitchSettingCard::checkedChanged, this, [this](bool on) {
+        settings_.setSaveLogToFile(on); persist();
     });
+    
+    auto *logLevelCard = card(fileLog, jietuba::FluentIcon::Filter, QStringLiteral("日志级别"), 
+                              QStringLiteral("选择调试、信息、警告等最小记录级别。"));
+    auto *logLevel = new jietuba::ComboBox(logLevelCard);
+    logLevel->addItem(QStringLiteral("调试"), QStringLiteral("debug"));
+    logLevel->addItem(QStringLiteral("信息"), QStringLiteral("info"));
+    logLevel->addItem(QStringLiteral("警告"), QStringLiteral("warning"));
+    logLevel->addItem(QStringLiteral("错误"), QStringLiteral("error"));
+    logLevel->setCurrentIndex(logLevel->findData(settings_.logLevel()));
+    logLevelCard->addControl(logLevel);
+    connect(logLevel, &QComboBox::currentIndexChanged, this, [this, logLevel] {
+        settings_.setLogLevel(logLevel->currentData().toString()); persist();
+    });
+    
+    auto *retentionCard = card(fileLog, jietuba::FluentIcon::DateTime, QStringLiteral("保留时间"), 
+                               QStringLiteral("自动清理超过期限的旧日志。"));
+    auto *retention = new jietuba::ComboBox(retentionCard);
+    retention->addItem(QStringLiteral("1 天"), 1);
+    retention->addItem(QStringLiteral("3 天"), 3);
+    retention->addItem(QStringLiteral("7 天"), 7);
+    retention->addItem(QStringLiteral("14 天"), 14);
+    retention->addItem(QStringLiteral("30 天"), 30);
+    retention->setCurrentIndex(retention->findData(settings_.logRetentionDays()));
+    retentionCard->addControl(retention);
+    connect(retention, &QComboBox::currentIndexChanged, this, [this, retention] {
+        settings_.setLogRetentionDays(retention->currentData().toInt()); persist();
+    });
+    
+    auto *logDirCard = card(fileLog, jietuba::FluentIcon::Folder, QStringLiteral("日志文件夹"), 
+                            QStringLiteral("查看或修改日志存储位置。"));
+    auto *logDirInput = new jietuba::LineEdit(logDirCard);
+    logDirInput->setMaximumWidth(jietuba::SettingCard::CONTROL_COLUMN_MAX);
+    logDirInput->setText(settings_.logDirectory());
+    logDirCard->addControl(logDirInput);
+    connect(logDirInput, &QLineEdit::editingFinished, this, [this, logDirInput] {
+        settings_.setLogDirectory(logDirInput->text()); persist();
+    });
+    
+    logs->addWidget(fileLog);
     logs->addStretch();
     otherPageIndex_ = pages_->count();
     auto *other = addPage(QStringLiteral("other"), settingsText("Other"), jietuba::FluentIcon::Setting);
