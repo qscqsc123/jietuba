@@ -2,6 +2,7 @@
 #include "scroll_capture_overlay.h"
 #include "linux_settings.h"
 #include "ocr_result_window.h"
+#include "ppocr_wrapper.h"
 #include "pin_window.h"
 #include "capture_delivery.h"
 #include "result_placement.h"
@@ -158,7 +159,14 @@ void LinuxScrollCaptureWindow::completeAction() {
     case Action::Save: saveResult(); break;
     case Action::Ocr: {
         const bool direct=settings_ && settings_->captureFlag(LinuxSettings::CaptureFlag::CopyOcr);
-        auto *window = new LinuxOcrResultWindow(resultImage(),nullptr,{},direct);
+        
+        // 自动选择 OCR 引擎：优先使用 PP-OCR（如果可用）
+        std::function<LinuxOcrResult(const QImage &)> recognizer;
+        if (LinuxPpocrEngine::available()) {
+            recognizer = [](const QImage &img) { return LinuxPpocrEngine::recognize(img); };
+        }
+        
+        auto *window = new LinuxOcrResultWindow(resultImage(),nullptr,recognizer,direct);
         placeCaptureResult(window,screen_,logicalRegion_,settings_ ? settings_->ocrPosition() : "center");
         if (!direct) window->show(); close(); break;
     }

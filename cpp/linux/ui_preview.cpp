@@ -46,6 +46,7 @@
 #include "gif_capture_window.h"
 #include "wayland_surface_support.h"
 #include "ocr_result_window.h"
+#include "ppocr_wrapper.h"
 #include "barcode_result_window.h"
 #include "translation_result_window.h"
 #include "core/ui_theme.h"
@@ -1913,12 +1914,17 @@ private:
     void recognizeText() {
         finishText();
         if (!scene_ || !scene_->selection_model->is_confirmed() || scene_->selection_model->is_empty()) return;
-        // 与 Windows 版一致：OCR 读取选区底图，不把画笔、水印等标注识别成文字。
-        // Match Windows OCR: recognize the base capture, excluding annotations and watermark.
         const QImage image = jietuba::ExportService(scene_).export_base_image_only(scene_->selection_model->rect());
         if (image.isNull()) { QMessageBox::warning(this, QStringLiteral("文字识别失败"), QStringLiteral("无法导出选区底图。")); return; }
         const bool direct=settings_ && settings_->captureFlag(LinuxSettings::CaptureFlag::CopyOcr);
-        auto *window = new LinuxOcrResultWindow(image,nullptr,{},direct);
+        
+        // 自动选择 OCR 引擎：优先使用 PP-OCR（如果可用）
+        std::function<LinuxOcrResult(const QImage &)> recognizer;
+        if (LinuxPpocrEngine::available()) {
+            recognizer = [](const QImage &img) { return LinuxPpocrEngine::recognize(img); };
+        }
+        
+        auto *window = new LinuxOcrResultWindow(image,nullptr,recognizer,direct);
         placeCaptureResult(window,screen(),outputCrop().toAlignedRect(),settings_ ? settings_->ocrPosition() : QStringLiteral("center"));
         if (!direct) window->show();
         resetSelection();

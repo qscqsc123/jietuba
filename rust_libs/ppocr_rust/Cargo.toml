@@ -6,6 +6,9 @@ license = "Apache-2.0"
 authors = ["JYAARU"]
 description = "PP-OCR (PaddleOCR) ONNX inference via Rust + ort (det+rec, no opencv/numpy)"
 
+[lib]
+crate-type = ["cdylib"]
+
 [features]
 # ONNX Runtime 不静态链接，运行时由 engine::init_runtime 从给定路径加载（C++ 版用）
 load-dynamic = ["ort/load-dynamic"]
