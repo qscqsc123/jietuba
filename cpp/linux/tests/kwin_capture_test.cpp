@@ -36,17 +36,19 @@ public slots:
             sendErrorReply(QDBusError::InvalidArgs, "missing or invalid capture options"); return {};
         }
         const bool includePin = !options.value("hide-caller-windows").toBool();
+        const QSize size = QCoreApplication::arguments().contains("--serve-areas")
+            ? QSize(qEnvironmentVariableIntValue("JIETUBA_TEST_OUTPUT_WIDTH"),qEnvironmentVariableIntValue("JIETUBA_TEST_OUTPUT_HEIGHT")) : QSize(512,512);
         const int fd = dup(pipe.fileDescriptor());
         if (fd < 0) { sendErrorReply(QDBusError::Failed, "dup failed"); return {}; }
         // 一组 512×512 RGBA 像素超过普通管道容量；只有客户端持续读取才能写完。
         // This RGBA payload exceeds pipe capacity and requires the client to drain it.
-        std::thread([fd, includePin] {
-            QByteArray bytes(512 * 512 * 4, 0);
+        std::thread([fd, includePin, size] {
+            QByteArray bytes(size.width() * size.height() * 4, 0);
             for (int i = 0; i < bytes.size(); i += 4) { bytes[i] = char(255); bytes[i + 3] = char(255); }
             // 不隐藏调用方窗口时，合成器原图中已经有贴图；客户端无需再次绘制贴图。
             // Including caller windows puts the pin in the compositor frame; no client-side overlay is needed.
             if (includePin) for (int y = 100; y < 200; ++y) for (int x = 80; x < 180; ++x) {
-                const int offset = (y * 512 + x) * 4;
+                const int offset = (y * size.width() + x) * 4;
                 bytes[offset] = 0; bytes[offset + 1] = char(255);
             }
             qsizetype offset = 0;
@@ -58,7 +60,7 @@ public slots:
             }
             close(fd);
         }).detach();
-        return {{"type", "raw"}, {"width", uint(512)}, {"height", uint(512)}, {"stride", uint(2048)}, {"format", uint(QImage::Format_RGBA8888)}};
+        return {{"type", "raw"}, {"width", uint(size.width())}, {"height", uint(size.height())}, {"stride", uint(size.width()*4)}, {"format", uint(QImage::Format_RGBA8888)}};
     }
     // 严格使用 KWin 正式 XML 的 iiuua{sv}h 签名，禁止用实现头文件的 int 宽高模拟总线。
     // Match KWin's wire XML exactly, so signed width/height fail here just as on the real desktop.

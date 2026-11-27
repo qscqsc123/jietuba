@@ -397,7 +397,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         endif()
         add_dependencies(mosaic_ui_test kwin_capture_test)
         add_test(NAME capture_reentry_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:mosaic_ui_test> --capture-reentry)
-        set_tests_properties(capture_reentry_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 35 SKIP_RETURN_CODE 77)
+        # 整屏采集需要输出名称；离屏平台默认的空名称不能模拟真实 KWin 显示器。
+        # Give the offscreen fixture a named output for native fullscreen requests.
+        set_tests_properties(capture_reentry_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen:configfile=${CMAKE_CURRENT_SOURCE_DIR}/linux/tests/offscreen_capture.json" TIMEOUT 35 SKIP_RETURN_CODE 77)
         foreach(scale IN ITEMS 1 1.5 2)
             string(REPLACE "." "_" scale_name ${scale})
             add_test(NAME popup_layout_${scale_name}_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:mosaic_ui_test> --popup-layout-only)

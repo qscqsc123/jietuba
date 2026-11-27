@@ -497,7 +497,9 @@ protected:
             }
             // 已确认的框只允许移动和拉伸；空白处不能开始另一轮框选。
             // After confirmation, background gestures never replace the existing crop.
-            if (regionCapture && canvas->selection_model->is_confirmed()) { e->accept(); return; }
+            // 冻结截图也遵守此限制：点击旧工具栏的像素不能清空最新文档的选区。
+            // Frozen captures follow the same rule: pixels of an older toolbar cannot reset the active crop.
+            if ((regionCapture || fullScreenCapture) && canvas->selection_model->is_confirmed()) { e->accept(); return; }
             if (!canvas->sceneRect().contains(pos)) return;
             start = pos;
             canvas->selection_model->deactivate();
@@ -1076,7 +1078,7 @@ public:
         }
         return false;
     }
-    QRect captureBounds() const { return regionRequested_; }
+    QRect captureBounds() const { return view_->regionCapture ? regionRequested_ : outputCrop().toAlignedRect(); }
     void setSaveDialogHandler(std::function<void(bool)> handler) { saveDialogHandler_ = std::move(handler); }
     void setNativeOverlayLevel(bool upper) {
 #ifdef JIETUBA_HAS_LAYER_SHELL
@@ -2135,12 +2137,12 @@ LinuxAnnotationCanvas *LinuxAnnotationCanvas::createForScreenAnnotation(QWidget 
 }
 
 /**
- * 一次截图会话的协调器：先在各屏幕显示透明选区层，松开鼠标后撤下所有选区层，
- * 然后只采集选中的输出并进入原版画布。开始框选时不采集、不显示冻结图片或整屏遮罩。
+ * 一次截图会话的协调器：先采集各输出的整屏原生像素，再在冻结画面上框选、标注。
+ * 框选、复制和保存共用同一画布，不重新采集选区，也不重建文档，保留原始冻结时刻。
  * 使用实际返回的截图尺寸换算逻辑选区，避免多屏不同缩放污染导出坐标。新截图可暂存上层编辑器；
  * 录屏由独立会话持有，只协调控件显隐，不暂停采集。关闭内层后原选区、标注和撤销记录一起恢复。
- * Coordinates live selection first, then capture and annotation on the chosen output.
- * All transparent selectors unmap before capture, preserving existing pins in the result.
+ * Capture complete output frames first, then select and annotate the frozen pixels in one document.
+ * Selection and export never recapture the desktop; nested stills include the visible parent surfaces.
  * Logical selections map through actual capture dimensions for mixed-DPI outputs. Nested stills park the parent
  * document and undo history. Independent recorders keep capturing while their controls yield to the editor.
  */
@@ -2283,10 +2285,10 @@ public:
                 if (!editor->canSuspend()) return;
                 if (!binding.isEmpty() && editor->triggerLocalBinding(binding)) return;
             }
-            QScreen *dragScreen = nullptr;
-            for (auto *editor : editors) if (editor->parkForCapture()) dragScreen = editor->screen();
+            // 拖框中也创建新的整屏冻结文档；旧选区先提交，子截图结束后原样恢复。
+            // A repeated hotkey during dragging also freezes a new full output, preserving the parent crop.
+            for (auto *editor : editors) editor->parkForCapture();
             suspendedEditors_.append({std::exchange(overlays_, {}), {}, {}, {}, {}});
-            if (dragScreen) { captureCurrentOutput(dragScreen); return; }
         }
         screens_.clear(); images_.clear(); index_ = 0;
         captureAction_ = action;
@@ -2323,7 +2325,13 @@ private:
         if(screens_.isEmpty()) {fail(QStringLiteral("没有可用的显示器。"));return;}
         // 获取每个输出的原生像素后，再在各自逻辑尺寸上显示冻结选区。
         // Capture native frames for each output before displaying logical-coordinate selectors.
-        QTimer::singleShot(60,this,[this,generation]{if(busy_ && generation==generation_) captureForSelection();});
+        QTimer::singleShot(60,this,[this,generation]{
+            if(!busy_ || generation!=generation_) return;
+            // 独立录屏仍先选择实时区域；只有静态截图需要冻结桌面。
+            // Independent recording selects a live region; still captures freeze the desktop first.
+            if(captureAction_ == "record") beginSelection();
+            else captureForSelection();
+        });
     }
     void captureCurrentOutput(QScreen *screen) {
         if (!screen) { fail(QStringLiteral("当前显示器已断开。")); return; }
@@ -2449,7 +2457,8 @@ private:
         // Capture fullscreen first for frozen selection
         if (index_ < screens_.size()) {
             const auto &output = screens_[index_];
-            router_.capture(output.name);
+            router_.capture(output.name, CallerWindowPolicy::Include,
+                            captureAction_ != "record" && settings_.captureFlag(LinuxSettings::CaptureFlag::Cursor));
             return;
         }
         // 所有屏幕截图完成，开始在冻结画面上框选

@@ -11,7 +11,7 @@
 namespace capture_reentry_test {
 template<class T> T *visibleWindow() {
     for (auto *widget : QApplication::topLevelWidgets())
-        if (auto *window = dynamic_cast<T *>(widget); window && window->isVisible() && !window->windowHandle()->mask().contains(QPoint(-2,-2))) return window;
+        if (auto *window = dynamic_cast<T *>(widget); window && window->isVisible() && window->isEnabled() && !window->windowHandle()->mask().contains(QPoint(-2,-2))) return window;
     return nullptr;
 }
 
@@ -31,6 +31,8 @@ inline int run(QApplication &app, bool virtualKWin) {
         if (!bus || bus->isServiceRegistered(service).value()) return fail("expected an empty private bus");
         qputenv("XDG_CURRENT_DESKTOP", "KDE");
         qputenv("WAYLAND_DISPLAY", "jietuba-test-no-compositor");
+        qputenv("JIETUBA_TEST_OUTPUT_WIDTH",QByteArray::number(app.primaryScreen()->size().width()));
+        qputenv("JIETUBA_TEST_OUTPUT_HEIGHT",QByteArray::number(app.primaryScreen()->size().height()));
         fixture.start(QCoreApplication::applicationDirPath() + "/kwin_capture_test", {"--serve-areas"});
         if (!fixture.waitForStarted(2000) || !QTest::qWaitFor([&] { return bus->isServiceRegistered(service).value(); }, 2000))
             return fail("private ScreenShot2 fixture did not start");
@@ -158,22 +160,18 @@ inline int run(QApplication &app, bool virtualKWin) {
     dialogs.start(30);
     const QRect recorded(64,70,500,350), firstArea(120,120,360,230), secondArea(150,150,160,90);
     const auto drag = [&](const QRect &r) {
-        auto *live = selector();
-        QTest::mousePress(live, Qt::LeftButton, Qt::NoModifier, r.topLeft());
-        QTest::mouseRelease(live, Qt::LeftButton, Qt::NoModifier, r.topLeft()+QPoint(r.width(),r.height()));
+        QWidget *target=selector();
+        if(!target) target=editor()->findChild<QGraphicsView *>()->viewport();
+        QTest::mousePress(target, Qt::LeftButton, Qt::NoModifier, r.topLeft());
+        QTest::mouseMove(target,r.topLeft()+QPoint(r.width(),r.height()));
+        QTest::mouseRelease(target, Qt::LeftButton, Qt::NoModifier, r.topLeft()+QPoint(r.width(),r.height()));
     };
     if (virtualKWin) {
         activate();
-        if (!wait(selector)) return fail("missing smart selector");
-        auto *live=selector(); auto *tracker=live->findChild<KWinPointerTracker *>();
-        if (!tracker) return fail("window detection disabled");
-        QSignalSpy hits(tracker,&KWinPointerTracker::windowHit);
-        if (!wait([&]{return !hits.isEmpty();})) return fail("KWin did not return a window hit");
-        const auto sample=hits.last(); const QRect area=sample[1].toRect();
-        if (area!=desktop.screen()->geometry()) return fail("smart target is not the test desktop window");
-        QTest::mouseClick(live,Qt::LeftButton,Qt::NoModifier,sample[0].toPoint()-area.topLeft());
-        if (!wait(editor) || editor()->captureBounds().size()!=area.size()) return fail("single click did not capture the detected window");
-        QTest::keyClick(editor(),Qt::Key_Escape);
+        if(!wait(editor)) return fail("missing frozen full-output editor");
+        auto *view=dynamic_cast<PreviewView *>(editor()->findChild<QGraphicsView *>());
+        if(!view || view->regionCapture) return fail("still capture used live region selection");
+        QTest::keyClick(view,Qt::Key_Escape);
     }
     record.trigger();
     if (!wait(selector)) return fail("cannot select tray recording");
@@ -190,7 +188,7 @@ inline int run(QApplication &app, bool virtualKWin) {
     toggle.trigger();
     if (outer->controlWindow()->isVisible()) QTest::keyClick(outer->controlWindow(), Qt::Key_1, Qt::AltModifier);
     else activate(); // 无 layer-shell 时从托盘/Portal 进入 / Tray-only desktops deliver the portal action.
-    if (!wait(selector) || !outer->controlWindow()->isVisible()) return fail("recorder toolbar vanished during nested selection");
+    if (!wait(editor) || !outer->controlWindow()->isVisible()) return fail("recorder toolbar vanished during nested selection");
     const auto before = outerFrames.count();
     if (!wait([&] { return outerFrames.count() >= before + 2; })) return fail("outer stopped in live selection");
     // 在同一段 MP4 内建立 A、B，再用全屏 C 包住它们；验证交互权按 C→B→A 恢复。
@@ -200,7 +198,7 @@ inline int run(QApplication &app, bool virtualKWin) {
     QPointer<CapturePreview> parent = editor();
     auto *aBar = parent->findChild<jietuba::Toolbar *>();
     activate();
-    if (!wait(selector)) return fail("missing second selector");
+    if (!wait(editor)) return fail("missing second selector");
     drag(secondArea);
     if (!wait([&] { return editor() && editor()!=parent; })) return fail("nested crop rejected");
     QPointer<CapturePreview> child = editor();
@@ -215,16 +213,22 @@ inline int run(QApplication &app, bool virtualKWin) {
     clickBar(child, parent, aBar->cancel_btn);
     if (staleClicks.count() || editor()!=child || !parent->isVisible()) return fail("old cancel stole input");
     activate();
-    if (!wait(selector)) return fail("missing third selector");
-    QTest::keyClick(selector(), Qt::Key_Return);
+    if (!wait(editor)) return fail("missing third selector");
+    drag(QRect(QPoint(0,0),app.primaryScreen()->size()-QSize(1,1)));
     if (!wait([&] { return editor() && editor()!=child; }) || bBar->isEnabled() || aBar->isEnabled())
         return fail("enclosing full-output crop did not lock both older toolbars");
     QTest::keyClick(editor(), Qt::Key_Escape);
     if (!wait([&] { return editor()==child; }) || !bBar->isEnabled() || aBar->isEnabled()) return fail("wrong toolbar resumed after third crop");
     clickBar(child, child, bBar->confirm_btn);
-    if (!wait([&] { return !child && editor()==parent; }) || !aBar->isEnabled()) return fail("confirm did not restore first toolbar");
+    if (!wait([&] { return !child && editor()==parent; }) || !aBar->isEnabled()) {
+        std::fprintf(stderr,"Confirm state: child=%p, active=%p, parent=%p, parent enabled=%d, child crop=%dx%d, child confirm visible=%d enabled=%d\n",
+            static_cast<void *>(child.data()),static_cast<void *>(editor()),static_cast<void *>(parent.data()),aBar->isEnabled(),
+            child ? child->captureBounds().width():0,child ? child->captureBounds().height():0,
+            child && bBar->confirm_btn->isVisible(),child && bBar->confirm_btn->isEnabled());
+        return fail("confirm did not restore first toolbar");
+    }
     activate();
-    if (!wait(selector)) return fail("missing selector for second recording");
+    if (!wait(editor)) return fail("missing selector for second recording");
     drag(secondArea);
     if (!wait([&] { return editor() && editor()!=parent; })) return fail("overlapping recorder crop rejected");
     settings.setRecordingMode("gif");
@@ -242,7 +246,7 @@ inline int run(QApplication &app, bool virtualKWin) {
     if (!wait([&] { return innerFrames.count() >= 2 && outerFrames.count() >= outerBefore + 2; })
         || !toggle.text().contains("GIF")) return fail("MP4 and GIF did not capture concurrently");
     activate();
-    if (!wait(selector)) return fail("two recorders blocked screenshot selector");
+    if (!wait(editor)) return fail("two recorders blocked screenshot selector");
     drag(secondArea.adjusted(5,5,-5,-5));
     if (!wait(editor)) return fail("two recorders blocked screenshot in their shared area");
     const auto innerBefore = innerFrames.count();

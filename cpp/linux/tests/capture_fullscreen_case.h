@@ -16,6 +16,7 @@ inline int runFullscreenCaptureCase(QApplication &app) {
     app.setQuitOnLastWindowClosed(false); app.setDesktopFileName("jietuba-capture-reentry-test");
     jietuba::get_ui_theme()->init(nullptr,&app);
     QTemporaryDir files; LinuxSettings settings(files.filePath("capture.ini"));
+    settings.setGlobalShortcutSlots("capture", {"Alt+1"});
     settings.setSaveDirectory(files.path()); settings.setCaptureFlag(LinuxSettings::CaptureFlag::AutoSave,false);
     const auto outputs=app.screens();
     std::vector<std::unique_ptr<QWidget>> desktops;
@@ -48,28 +49,71 @@ inline int runFullscreenCaptureCase(QApplication &app) {
             for(auto *w:app.topLevelWidgets()) if(auto *e=dynamic_cast<CapturePreview *>(w); e && e->isVisible()) editors.append(e);
             return editors.size()==count || !dialogError.isEmpty();
         },6000);
-        if(!ready || !dialogError.isEmpty() || editors.size()!=count) return false;
+        if(!ready || !dialogError.isEmpty() || editors.size()!=count) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+        // 屏幕后续改变颜色，导出仍应来自按快捷键时冻结的像素。
+        // Change the live desktop after capture; exports must retain the original frozen pixels.
+        QHash<CapturePreview *,QImage> frozenFrames;
         for(auto *editor:editors) {
-            auto *screen=editor->screen(); if(!all && screen!=single) return false;
-            if(!QTest::qWaitForWindowExposed(editor,2000)) return false;
             auto *view=dynamic_cast<PreviewView *>(editor->findChild<QGraphicsView *>());
-            if(!view || !QTest::qWaitFor([&]{return view->viewport()->size()==screen->size();},2000)) return false;
-            if(!view->canvas || view->canvas->background->boundingRect().size()!=QSizeF(nativeSizes.value(screen->name()))) return false;
+            if(!view || !view->canvas) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            frozenFrames.insert(editor,view->canvas->background->image());
+        }
+        for(const auto &desktop:desktops) desktop->setStyleSheet("background:#b83729");
+        const auto nested=[&](CapturePreview *parent) {
+            auto *view=parent->findChild<QGraphicsView *>();
+            const auto before=static_cast<LinuxAnnotationCanvas *>(parent)->result();
+            QTest::keyClick(view,Qt::Key_1,Qt::AltModifier);
+            QList<CapturePreview *> children;
+            if(!QTest::qWaitFor([&]{
+                children.clear();
+                for(auto *w:app.topLevelWidgets())
+                    if(auto *e=dynamic_cast<CapturePreview *>(w);e && e->isVisible() && !editors.contains(e)) children.append(e);
+                return children.size()==count || !dialogError.isEmpty();
+            },6000) || !dialogError.isEmpty() || children.size()!=count) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            if(!parent->isVisible() || parent->isEnabled()) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            for(auto *child:children) {
+                auto *v=dynamic_cast<PreviewView *>(child->findChild<QGraphicsView *>());
+                if(!v || v->regionCapture || !child->isEnabled()) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            }
+            QTest::keyClick(children.first()->findChild<QGraphicsView *>(),Qt::Key_Escape);
+            if(!QTest::qWaitFor([&]{return parent->isVisible() && parent->isEnabled();},2000)) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            if(!before.isNull() && static_cast<LinuxAnnotationCanvas *>(parent)->result()!=before) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            return true;
+        };
+        // 尚未拖框也能再截一次，取消后仍由原画布继续框选。
+        // Reenter before selection, then return to the same document.
+        if(attempt==0 && !nested(editors.first())) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+        for(auto *editor:editors) {
+            auto *screen=editor->screen(); if(!all && screen!=single) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            if(!QTest::qWaitForWindowExposed(editor,2000)) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            auto *view=dynamic_cast<PreviewView *>(editor->findChild<QGraphicsView *>());
+            if(!view || view->regionCapture || !QTest::qWaitFor([&]{return view->viewport()->size()==screen->size();},2000)) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            if(!view->canvas || view->canvas->background->boundingRect().size()!=QSizeF(nativeSizes.value(screen->name()))) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
             const QRect logical(60,60,160,100);
             QTest::mousePress(view->viewport(),Qt::LeftButton,Qt::NoModifier,logical.topLeft());
             QTest::mouseMove(view->viewport(),logical.topLeft()+QPoint(logical.width(),logical.height()));
+            if(attempt==0) {
+                // 按住左键拖框时再按截图键，恢复后仍在同一画布，不能丢选区。
+                // Reenter mid-drag; the parent must return with its committed selection intact.
+                if(!nested(editor)) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            }
             QTest::mouseRelease(view->viewport(),Qt::LeftButton,Qt::NoModifier,logical.topLeft()+QPoint(logical.width(),logical.height()));
             const double sx=double(nativeSizes.value(screen->name()).width())/screen->size().width();
             const double sy=double(nativeSizes.value(screen->name()).height())/screen->size().height();
             const auto crop=static_cast<LinuxAnnotationCanvas *>(editor)->result();
-            if(crop.isNull() || std::abs(crop.width()-logical.width()*sx)>2 || std::abs(crop.height()-logical.height()*sy)>2) return false;
+            if(crop.isNull() || std::abs(crop.width()-logical.width()*sx)>2 || std::abs(crop.height()-logical.height()*sy)>2) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
+            if(view->canvas->background->image()!=frozenFrames.value(editor)) return std::fprintf(stderr,"Frozen background changed at line %d\n",__LINE__),false;
+            const auto expected=frozenFrames.value(editor).pixelColor(qRound(logical.center().x()*sx),qRound(logical.center().y()*sy));
+            if(crop.pixelColor(crop.width()/2,crop.height()/2)!=expected) return std::fprintf(stderr,"Frozen export changed: expected %s, actual %s\n",qPrintable(expected.name()),qPrintable(crop.pixelColor(crop.width()/2,crop.height()/2).name())),false;
+            if(attempt==1 && !nested(editor)) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
             std::fprintf(stderr,"Fullscreen output %s: logical %dx%d, native %dx%d, crop %dx%d\n",qPrintable(screen->name()),screen->size().width(),screen->size().height(),nativeSizes.value(screen->name()).width(),nativeSizes.value(screen->name()).height(),crop.width(),crop.height());
         }
+        for(const auto &desktop:desktops) desktop->setStyleSheet("background:#27648a");
         auto *editor=editors.first(); auto *view=editor->findChild<QGraphicsView *>();
         auto *toolbar=editor->findChild<jietuba::Toolbar *>();
         if(attempt==1) {
             app.clipboard()->clear(); toolbar->confirm_btn->click();
-            if(!app.clipboard()->mimeData()->hasFormat("image/png")) return false;
+            if(!app.clipboard()->mimeData()->hasFormat("image/png")) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
         } else if(attempt==2) {
             const QString path=files.filePath(QStringLiteral("repeat-%1.png").arg(all));
             QTimer::singleShot(0,&app,[path]{
@@ -78,12 +122,12 @@ inline int runFullscreenCaptureCase(QApplication &app) {
                 }
             });
             toolbar->save_btn->click();
-            if(QImage(path).isNull()) return false;
+            if(QImage(path).isNull()) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
         } else QTest::keyClick(view,Qt::Key_Escape);
         if(!QTest::qWaitFor([&]{
             for(auto *w:app.topLevelWidgets()) if(auto *e=dynamic_cast<CapturePreview *>(w);e && e->isVisible()) return false;
             return true;
-        },2000)) return false;
+        },2000)) return std::fprintf(stderr,"Fullscreen check failed at line %d\n",__LINE__),false;
         std::fprintf(stderr,"Fullscreen repeat: %s cycle %d completed\n",all?"all outputs":"single output",attempt+1);
         }
         return true;

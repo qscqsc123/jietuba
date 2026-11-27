@@ -315,25 +315,33 @@ int main(int argc, char **argv) {
         settings.setCaptureAllScreens(false);
         QWidget launcher; launcher.show();
         CaptureSession session(&launcher,settings,true);
-        // 只启动然后取消，不应调用任何真实截图后端；并验证取消后可以立即再次框选。
-        // Start and cancel before capture, then verify the session can be immediately reopened.
+        // 离屏测试注入整屏帧，验证冻结文档和连续取消，不访问真实桌面。
+        // Inject a complete frame offscreen; verify frozen editor lifecycle without a real capture backend.
+        const auto frozen=[&]() -> CapturePreview * {
+            QTest::qWait(20); // 等待离屏输出定位，早于实际采集的延迟回调。 / Resolve output before capture dispatch.
+            QImage frame(app.primaryScreen()->size(),QImage::Format_RGB32); frame.fill(Qt::green);
+            auto *router=session.findChild<CaptureRouter *>();
+            if(router) emit router->frameReady(frame);
+            for(auto *top:app.topLevelWidgets())
+                if(auto *e=dynamic_cast<CapturePreview *>(top);e && e->isVisible() && e->isEnabled()) return e;
+            return nullptr;
+        };
         for (int attempt=0; attempt<2; ++attempt) {
-            session.start(); QTest::qWait(10);
-            if(!launcher.isVisible()) return fail("starting a screenshot hid settings");
-            QPointer<LinuxRegionSelector> live;
-            for (auto *top:app.topLevelWidgets())
-                if (auto *candidate=qobject_cast<LinuxRegionSelector *>(top); candidate && candidate->isVisible()) live=candidate;
-            if (!live) return fail("session did not start with a live selector");
-            QTest::keyClick(live,Qt::Key_Escape);
+            session.start(); QPointer<CapturePreview> capture=frozen();
+            if(!capture || !launcher.isVisible()) return fail("frozen capture did not open or hid settings");
+            auto *view=dynamic_cast<PreviewView *>(capture->findChild<QGraphicsView *>());
+            if(!view || view->regionCapture) return fail("frozen capture unexpectedly enabled region recapture");
+            QTest::keyClick(view,Qt::Key_Escape);
             QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
-            if (live) return fail("cancel left a selector alive");
-            if(!launcher.isVisible()) return fail("cancelling a screenshot hid settings");
+            if(capture || !launcher.isVisible()) return fail("cancel did not clear frozen document or hid settings");
         }
-        session.startRecording(); QTest::qWait(10);
+        session.startRecording();
         LinuxRegionSelector *recordSelector = nullptr;
-        for (auto *top : app.topLevelWidgets())
-            if (auto *candidate = qobject_cast<LinuxRegionSelector *>(top); candidate && candidate->isVisible()) recordSelector = candidate;
-        if (!recordSelector) return fail("recording did not open a live selector");
+        if(!QTest::qWaitFor([&]{
+            for(auto *top:app.topLevelWidgets())
+                if(auto *candidate=qobject_cast<LinuxRegionSelector *>(top);candidate && candidate->isVisible()) recordSelector=candidate;
+            return recordSelector!=nullptr;
+        },500)) return fail("recording did not open a live selector");
         const QRect logical(40, 40, 160, 80);
         QTest::mousePress(recordSelector, Qt::LeftButton, Qt::NoModifier, logical.topLeft());
         QTest::mouseRelease(recordSelector, Qt::LeftButton, Qt::NoModifier, QPoint(200, 120));
@@ -351,15 +359,14 @@ int main(int argc, char **argv) {
         // 外层录制存在时仍可框选；取消截图不应销毁外层，第二次录制也独立保留。
         // Selection/cancellation and a second recording must leave the outer session alive.
         QPointer<LinuxGifCaptureWindow> outer=recorder;
-        session.start(); QTest::qWait(10);
-        LinuxRegionSelector *nestedSelector=nullptr;
-        for(auto *top:app.topLevelWidgets())
-            if(auto *candidate=qobject_cast<LinuxRegionSelector *>(top); candidate && candidate->isVisible()) nestedSelector=candidate;
-        if(!nestedSelector || !outer) return fail("recording blocked a concurrent screenshot");
-        QTest::keyClick(nestedSelector,Qt::Key_Escape);
+        session.start();
+        auto *nestedCapture=frozen();
+        if(!nestedCapture || !outer) return fail("recording blocked a concurrent frozen screenshot");
+        QTest::keyClick(nestedCapture->findChild<QGraphicsView *>(),Qt::Key_Escape);
         QCoreApplication::sendPostedEvents(nullptr,QEvent::DeferredDelete);
         if(!outer) return fail("cancelling screenshot destroyed outer recorder");
-        session.startRecording(); QTest::qWait(10);
+        LinuxRegionSelector *nestedSelector=nullptr;
+        session.startRecording(); QTest::qWait(100);
         nestedSelector=nullptr;
         for(auto *top:app.topLevelWidgets())
             if(auto *candidate=qobject_cast<LinuxRegionSelector *>(top); candidate && candidate->isVisible()) nestedSelector=candidate;
