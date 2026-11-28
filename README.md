@@ -40,7 +40,7 @@ jietuba-linux 是将 Windows 版 jietuba 移植到 Linux 平台的原生版本�
 
 ### Arch Linux
 ```bash
-sudo pacman -S qt6-base qt6-multimedia cmake rust tesseract onnxruntime ffmpeg
+sudo pacman -S qt6-base qt6-multimedia cmake rust tesseract onnxruntime-cpu ffmpeg
 ```
 
 ### Ubuntu/Debian
@@ -50,12 +50,15 @@ sudo apt install qt6-base-dev qt6-multimedia-dev cmake rustc tesseract-ocr libon
 
 ## 快速安装（Arch Linux）
 
-使用 AUR 包：
+在 `dev` 分支的仓库根目录构建并安装：
 
 ```bash
-cd pkg
 makepkg -si
 ```
+
+主包内置 PP-OCR 桥接库和两个识别模型，pacman 会安装 `onnxruntime-cpu`。如果已安装旧的独立扩展 `jietuba-linux-ppocr`，升级时按提示同意替换即可。
+
+安装后可在应用菜单中搜索“截图吧”。如需桌面快捷方式，可通过桌面环境的应用菜单将“截图吧”添加到桌面。
 
 ## 从源码编译
 
@@ -68,7 +71,7 @@ cd jietuba-linux
 ### 2. 编译 Rust 库（PP-OCR）
 ```bash
 cd rust_libs/ppocr_rust
-cargo build --release
+cargo build --release --locked --features load-dynamic
 sudo mkdir -p /usr/lib/jietuba
 sudo cp ../../rust_libs/target/release/libppocr_rust.so /usr/lib/jietuba/
 cd ../..

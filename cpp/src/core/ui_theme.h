@@ -34,6 +34,8 @@ struct UIThemeTokens {
     bool is_dark() const { return mode == UIThemeMode::DARK; }
 };
 
+// Theme tokens can be hex colours or CSS rgb()/rgba() values.
+QColor css_color(const QString &value);
 const UIThemeTokens &LIGHT_TOKENS();
 const UIThemeTokens &DARK_TOKENS();
 

@@ -80,18 +80,6 @@ QIcon to_qicon(const IconSource &icon, const QWidget *widget) {
     return tinted_from_path(icon_path(icon), ui_tokens(widget).text);
 }
 
-QColor css_color(const QString &value) {
-    const auto text = value.trimmed();
-    if (text.startsWith("rgba(") || text.startsWith("rgb(")) {
-        const auto inner = text.mid(text.indexOf('(') + 1).chopped(1);
-        const auto channels = inner.split(',');
-        QColor color(channels.value(0).trimmed().toInt(), channels.value(1).trimmed().toInt(), channels.value(2).trimmed().toInt());
-        if (channels.size() == 4) color.setAlphaF(channels[3].trimmed().toDouble());
-        return color;
-    }
-    return QColor::fromString(text);
-}
-
 QIcon tinted_icon(const IconSource &icon, const QString &color) { return tinted_from_path(icon_path(icon), color); }
 
 void paint_solid_background(QWidget *widget, int radius) {

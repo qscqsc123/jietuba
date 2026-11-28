@@ -38,8 +38,6 @@ QString scrollbar_qss(const QWidget *widget = nullptr);
 using IconSource = std::variant<std::monostate, QIcon, FluentIcon, QString>;
 // SVG-backed icons are tinted with the theme's text colour; *White icons keep their colour.
 QIcon to_qicon(const IconSource &icon, const QWidget *widget = nullptr);
-// Parses token colours for QPainter; QColor rejects rgb()/rgba().
-QColor css_color(const QString &value);
 QIcon tinted_icon(const IconSource &icon, const QString &color);
 // Opaque rounded background with a subtle vertical gradient for frameless dialogs.
 void paint_solid_background(QWidget *widget, int radius = 8);

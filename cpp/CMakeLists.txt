@@ -396,6 +396,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
             endforeach()
         endif()
         add_dependencies(mosaic_ui_test kwin_capture_test)
+        add_test(NAME translation_theme_test COMMAND mosaic_ui_test --translation-theme)
+        set_tests_properties(translation_theme_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
         add_test(NAME capture_reentry_test COMMAND ${JIETUBA_DBUS_RUN_SESSION} -- $<TARGET_FILE:mosaic_ui_test> --capture-reentry)
         # 整屏采集需要输出名称；离屏平台默认的空名称不能模拟真实 KWin 显示器。
         # Give the offscreen fixture a named output for native fullscreen requests.

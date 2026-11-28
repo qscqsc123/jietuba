@@ -66,6 +66,33 @@ int main(int argc, char **argv) {
     // Native siblings paint outside their parent's opacity effect and keep independent input regions.
     QCoreApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
     QApplication app(argc, argv);
+    if (app.arguments().contains("--translation-theme")) {
+        QTemporaryDir dir;
+        LinuxSettings settings(dir.filePath("theme.ini"));
+        auto *theme = jietuba::get_ui_theme()->init(nullptr, &app);
+        LinuxTranslationResultWindow window(QImage{}, settings);
+        window.show();
+        for (const auto mode : {"dark", "light"}) {
+            theme->set_mode(mode, false);
+            QCoreApplication::processEvents();
+            QList<QWidget *> controls;
+            controls.append(window.findChild<QComboBox *>());
+            for (auto *button : window.findChildren<QPushButton *>()) controls.append(button);
+            for (auto *control : controls) {
+                const auto palette = control->palette();
+                const auto group = control->isEnabled() ? QPalette::Active : QPalette::Disabled;
+                const auto fill = palette.color(group, QPalette::Button);
+                const auto text = palette.color(group, QPalette::ButtonText);
+                const bool light = theme->effective_mode() == jietuba::UIThemeMode::LIGHT;
+                if (!fill.isValid() || (fill.lightness() > 128) != light ||
+                    (fill.lightness() > text.lightness()) != light) {
+                    std::fprintf(stderr, "%s: unreadable %s palette\n", mode, control->metaObject()->className());
+                    return 1;
+                }
+            }
+        }
+        return 0;
+    }
     if(app.arguments().contains("--capture-fullscreen")) return runFullscreenCaptureCase(app);
     if (app.arguments().contains("--capture-reentry"))
         return capture_reentry_test::run(app, app.arguments().contains("--virtual-kwin"));

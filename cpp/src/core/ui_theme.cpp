@@ -156,6 +156,18 @@ void UIThemeManager::connect_system_theme() {
     }
 }
 
+QColor css_color(const QString &value) {
+    const auto text = value.trimmed();
+    if (text.startsWith("rgba(") || text.startsWith("rgb(")) {
+        const auto inner = text.mid(text.indexOf('(') + 1).chopped(1);
+        const auto channels = inner.split(',');
+        QColor color(channels.value(0).trimmed().toInt(), channels.value(1).trimmed().toInt(), channels.value(2).trimmed().toInt());
+        if (channels.size() == 4) color.setAlphaF(channels[3].trimmed().toDouble());
+        return color;
+    }
+    return QColor::fromString(text);
+}
+
 QPalette UIThemeManager::build_palette(const UIThemeTokens &t) {
     QPalette palette;
     const std::pair<QPalette::ColorRole, QString> roles[] = {
@@ -176,10 +188,9 @@ QPalette UIThemeManager::build_palette(const UIThemeTokens &t) {
         {QPalette::Mid, t.border_hover},
         {QPalette::Dark, t.window_border},
     };
-    for (const auto group : {QPalette::Normal, QPalette::Inactive, QPalette::Disabled})
-        for (const auto &[role, value] : roles) palette.setColor(group, role, QColor::fromString(value));
+    for (const auto &[role, value] : roles) palette.setColor(QPalette::All, role, css_color(value));
     for (const auto role : {QPalette::WindowText, QPalette::Text, QPalette::ButtonText, QPalette::PlaceholderText})
-        palette.setColor(QPalette::Disabled, role, QColor::fromString(t.text_disabled));
+        palette.setColor(QPalette::Disabled, role, css_color(t.text_disabled));
     return palette;
 }
 
