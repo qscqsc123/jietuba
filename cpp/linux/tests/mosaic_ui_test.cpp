@@ -17,6 +17,9 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTextCursor>
+#include <QTextBlock>
+#include <QTextLayout>
+#include <QInputMethodEvent>
 #include <QStackedWidget>
 #include <QTemporaryDir>
 #include "../pin_toolbar.h"
@@ -66,6 +69,37 @@ int main(int argc, char **argv) {
     // Native siblings paint outside their parent's opacity effect and keep independent input regions.
     QCoreApplication::setAttribute(Qt::AA_DontCreateNativeWidgetSiblings);
     QApplication app(argc, argv);
+    if (app.arguments().contains("--text-ime")) {
+        QTemporaryDir dir;
+        LinuxSettings settings(dir.filePath("ime.ini"));
+        QImage source(800,600,QImage::Format_RGB32); source.fill(Qt::white);
+        CapturePreview capture(source,&settings);
+        capture.show(); capture.activateWindow(); QTest::qWait(20);
+        auto *view = dynamic_cast<PreviewView *>(capture.findChild<QGraphicsView *>());
+        view->canvas->preset_selection(QRectF(20,20,700,500));
+        capture.findChild<jietuba::Toolbar *>()->text_btn->click();
+        const auto point = view->mapFromScene(160,160);
+        QTest::mouseClick(view->viewport(),Qt::LeftButton,Qt::NoModifier,point);
+        auto *item = dynamic_cast<jietuba::TextItem *>(view->canvas->focusItem());
+        if (!item) return 1;
+        auto type = [&](const QString &preedit, const QString &commit) {
+            auto *focus = app.focusObject();
+            if (!focus) return false;
+            QInputMethodQueryEvent query(Qt::ImEnabled);
+            QApplication::sendEvent(focus,&query);
+            if (!query.value(Qt::ImEnabled).toBool()) return false;
+            QInputMethodEvent compose(preedit, {});
+            QApplication::sendEvent(focus,&compose);
+            if (item->textCursor().block().layout()->preeditAreaText() != preedit) return false;
+            QInputMethodEvent accept; accept.setCommitString(commit);
+            QApplication::sendEvent(focus,&accept);
+            return item->toPlainText().contains(commit);
+        };
+        if (!type("nihao",QStringLiteral("你好"))) return 2;
+        item->clearFocus();
+        QTest::mouseDClick(view->viewport(),Qt::LeftButton,Qt::NoModifier,point);
+        return type("zhongwen",QStringLiteral("中文")) ? 0 : 3;
+    }
     if (app.arguments().contains("--translation-theme")) {
         QTemporaryDir dir;
         LinuxSettings settings(dir.filePath("theme.ini"));

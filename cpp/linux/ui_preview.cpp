@@ -538,6 +538,7 @@ protected:
                     if (editor) editor->stop_edit();
                     moving = false;
                     moveBefore.reset();
+                    text->setTextInteractionFlags(Qt::TextEditorInteraction);
                     text->setFocus(Qt::MouseFocusReason);
                     viewport()->setFocus();
                     return;
@@ -1817,15 +1818,16 @@ private:
         connect(scene_, &jietuba::CanvasScene::item_auto_select_requested, this, [this](QGraphicsItem *item) {
             if (view_->editor && view_->editor->start_edit(item)) selectItem(item);
         });
-        connect(scene_, &QGraphicsScene::focusItemChanged, this, [this](QGraphicsItem *, QGraphicsItem *newFocus, Qt::FocusReason) {
-            if (!layerOverlay_) return;
-            auto *layer = LayerShellQt::Window::get(windowHandle());
-            if (!layer) return;
-            const bool editing = newFocus && dynamic_cast<QGraphicsTextItem *>(newFocus) &&
-                                 dynamic_cast<QGraphicsTextItem *>(newFocus)->textInteractionFlags() & Qt::TextEditorInteraction;
-            layer->setKeyboardInteractivity(editing ? LayerShellQt::Window::KeyboardInteractivityOnDemand
-                                                    : LayerShellQt::Window::KeyboardInteractivityExclusive);
+#ifdef JIETUBA_HAS_LAYER_SHELL
+        connect(scene_, &QGraphicsScene::focusItemChanged, this, [this](QGraphicsItem *newFocus, QGraphicsItem *, Qt::FocusReason) {
+            if (!layerOverlay_ || !isEnabled() || !windowHandle()) return;
+            if (auto *layer = LayerShellQt::Window::get(windowHandle())) {
+                auto *text = dynamic_cast<QGraphicsTextItem *>(newFocus);
+                layer->setKeyboardInteractivity(text && text->textInteractionFlags().testFlag(Qt::TextEditable)
+                    ? LayerShellQt::Window::KeyboardInteractivityOnDemand : LayerShellQt::Window::KeyboardInteractivityExclusive);
+            }
         });
+#endif
         connect(scene_->undo_stack, &QUndoStack::indexChanged, this, [this] {
             if(recordingMode_ && recordingChanged) recordingChanged();
             numberPanel_->set_next_number(jietuba::NumberTool::get_next_number(scene_));

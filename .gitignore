@@ -1,3 +1,10 @@
+# Arch makepkg caches at the repository root (not cpp/src or Rust sources)
+/src/
+/pkg/
+/jietuba/
+/jietuba-linux/
+/*.pkg.tar.*
+
 # 编译产物
 build/
 cpp/build/
