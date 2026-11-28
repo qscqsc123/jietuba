@@ -1,6 +1,6 @@
 # Maintainer: qscqsc123 <wy56752466@gmail.com>
 pkgname=jietuba-linux-git
-pkgver=r607.dab3f08
+pkgver=r608.95c88b2
 pkgrel=1
 pkgdesc="Screenshot, annotation, OCR, pin, and recording tool (Linux port)"
 arch=('x86_64' 'aarch64')
