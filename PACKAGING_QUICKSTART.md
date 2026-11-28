@@ -1,8 +1,18 @@
 # jietuba-linux 快速打包指南
 
-## ✅ 当前状态
+## 从最新 Linux 源码打包
 
-正在本地构建测试包...
+在 `dev` 分支的仓库根目录运行以下命令。独立目录可以避免沿用旧包的源码缓存和构建产物。
+
+```bash
+builddir=$(mktemp -d)
+cp PKGBUILD "$builddir/"
+(cd "$builddir" && makepkg -s)
+git -C "$builddir/src/jietuba-linux" rev-parse --short HEAD
+pacman -Qp "$builddir"/jietuba-linux-git-r*.pkg.tar.zst
+```
+
+包版本中 `r` 后面是提交数，点号后面是本次构建的源码提交。主包和调试包均生成在 `$builddir`。
 
 ## 📦 完成后的操作
 

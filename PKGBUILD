@@ -1,10 +1,10 @@
 # Maintainer: qscqsc123 <wy56752466@gmail.com>
 pkgname=jietuba-linux-git
-pkgver=r592.6676a8a
+pkgver=r606.856a338
 pkgrel=1
 pkgdesc="Screenshot, annotation, OCR, pin, and recording tool (Linux port)"
 arch=('x86_64' 'aarch64')
-url="https://github.com/qscqsc123/jietuba"
+url="https://github.com/qscqsc123/jietuba-linux"
 license=('MIT')
 depends=(
     'qt6-base>=6.8'
@@ -39,35 +39,31 @@ optdepends=(
 )
 provides=('jietuba-linux')
 conflicts=('jietuba-linux')
-source=("jietuba::git+${url}.git#branch=dev")
+source=("git+${url}.git#branch=dev")
 sha256sums=('SKIP')
 
 pkgver() {
-    cd "$srcdir/jietuba"
+    cd "$srcdir/jietuba-linux"
     printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 prepare() {
-    cd "$srcdir/jietuba/rust_libs"
-    cargo fetch --locked
-    
-    # 生成 native_smart_erase 的 Cargo.lock（git 中被忽略）
-    cd "$srcdir/jietuba/cpp/linux/native_smart_erase"
-    cargo generate-lockfile
+    cd "$srcdir/jietuba-linux/cpp/linux/native_smart_erase"
+    cargo fetch
 }
 
 build() {
-    cd "$srcdir/jietuba/cpp"
+    cd "$srcdir/jietuba-linux/cpp"
     
     cmake -B build \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_INSTALL_PREFIX=/usr
     
-    cmake --build build --parallel --target jietuba_linux_ui_preview
+    cmake --build build --target jietuba_linux_ui_preview
 }
 
 package() {
-    cd "$srcdir/jietuba/cpp"
+    cd "$srcdir/jietuba-linux/cpp"
     
     install -Dm755 "build/jietuba_linux_ui_preview" "$pkgdir/usr/bin/jietuba-linux"
     

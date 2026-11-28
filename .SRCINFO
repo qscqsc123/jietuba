@@ -1,8 +1,8 @@
 pkgbase = jietuba-linux-git
 	pkgdesc = Screenshot, annotation, OCR, pin, and recording tool (Linux port)
-	pkgver = r592.6676a8a
+	pkgver = r606.856a338
 	pkgrel = 1
-	url = https://github.com/qscqsc123/jietuba
+	url = https://github.com/qscqsc123/jietuba-linux
 	arch = x86_64
 	arch = aarch64
 	license = MIT
@@ -33,7 +33,7 @@ pkgbase = jietuba-linux-git
 	optdepends = at-spi2-core: Smart element detection
 	provides = jietuba-linux
 	conflicts = jietuba-linux
-	source = jietuba::git+https://github.com/qscqsc123/jietuba.git#branch=dev
+	source = git+https://github.com/qscqsc123/jietuba-linux.git#branch=dev
 	sha256sums = SKIP
 
 pkgname = jietuba-linux-git
